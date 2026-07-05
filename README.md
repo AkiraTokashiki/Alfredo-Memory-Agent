@@ -1,10 +1,8 @@
-# MemoryAgent 🧠
+# Alfredo — MemoryAgent
 
-**Give your AI agent a brain that remembers, forgets, and learns.**
+**Give your Qwen Cloud agent a brain that remembers, forgets, and learns.**
 
-MemoryAgent is a persistent memory system for AI agents. It combines **semantic search**, **Ebbinghaus forgetting curves**, and **multi-factor retrieval** to give LLMs accurate, context-aware memory across sessions — without eating your context window.
-
-> Built for AI hackathons. Works with Hermes, Claude Desktop, Cursor, or any MCP-compatible client.
+Alfredo is a MemoryAgent that gives Qwen Cloud agents persistent, selective memory across sessions, recalling key user preferences and facts while filtering context with relevance, recency, importance, and decay.
 
 ---
 
