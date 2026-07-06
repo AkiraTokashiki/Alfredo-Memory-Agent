@@ -73,6 +73,20 @@ pip install -e ".[all]"     # with MCP + LLM support
 python examples/demo_basic.py
 ```
 
+### Hackathon demo
+
+```bash
+python examples/demo_hackathon.py
+```
+
+This demo shows the complete memory lifecycle:
+
+1. learns a user preference in one session;
+2. recalls it in a later session;
+3. archives the stale preference when the user changes it;
+4. keeps critical memories inside a bounded recall context even after low-importance noise is added;
+5. prints active/archived memory stats for judging.
+
 ### 3. Interactive chat
 
 ```bash

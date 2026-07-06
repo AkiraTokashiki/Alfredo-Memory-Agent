@@ -197,6 +197,28 @@ class MemoryStore:
             )
         self.conn.commit()
 
+    def archive_memory(
+        self,
+        memory_id: int,
+        *,
+        reason: str,
+        metadata: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> None:
+        """Archive one memory and preserve the reason in metadata."""
+        memory = self.get_memory(memory_id)
+        if memory is None:
+            return
+
+        merged_metadata = dict(memory.metadata)
+        merged_metadata["archival_reason"] = reason
+        if metadata:
+            merged_metadata.update(metadata)
+
+        memory.is_active = False
+        memory.metadata = merged_metadata
+        self.update_memory(memory, commit=commit)
+
     def count_memories(self, *, active_only: bool = True) -> int:
         """Total number of memories in the store."""
         if active_only:
@@ -382,13 +404,30 @@ class MemoryStore:
 
         Returns the number of memories archived.
         """
-        cur = self.conn.execute(
-            "UPDATE memories SET is_active = 0, updated_at = datetime('now') WHERE strength < ? AND is_active = 1",
+        rows = self.conn.execute(
+            "SELECT id, metadata FROM memories WHERE strength < ? AND is_active = 1",
             (threshold,),
-        )
+        ).fetchall()
+        now = datetime.now().isoformat()
+
+        for row in rows:
+            raw_metadata = row["metadata"]
+            if raw_metadata:
+                metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else raw_metadata
+            else:
+                metadata = {}
+            metadata["archival_reason"] = "decay"
+            metadata["archived_at"] = now
+            self.conn.execute(
+                """UPDATE memories
+                   SET is_active = 0, metadata = ?, updated_at = ?
+                   WHERE id = ?""",
+                (json.dumps(metadata), now, row["id"]),
+            )
+
         if commit:
             self.conn.commit()
-        return cur.rowcount
+        return len(rows)
 
     def delete_archived_older_than(self, days: int = 90) -> int:
         """Hard-delete archived memories older than N days."""

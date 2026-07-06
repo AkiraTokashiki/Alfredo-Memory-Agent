@@ -107,6 +107,7 @@ class RetrievalEngine:
         min_score: float | None = None,
         use_mmr: bool = True,
         mmr_lambda: float | None = None,
+        candidate_k: int | None = None,
     ) -> list[SearchResult]:
         """Retrieve the most relevant memories for a query.
 
@@ -122,6 +123,8 @@ class RetrievalEngine:
             Ranked list of SearchResult objects.
         """
         top_k = top_k or self.config.top_k
+        candidate_k = candidate_k or top_k
+        candidate_k = max(candidate_k, top_k)
         min_score = min_score if min_score is not None else self.config.min_score
         mmr_lambda = mmr_lambda if mmr_lambda is not None else self.config.mmr_lambda
 
@@ -149,11 +152,13 @@ class RetrievalEngine:
         # Sort by score
         results.sort(key=lambda r: r.score, reverse=True)
 
-        # Apply MMR diversity if requested and we have more results than top_k
-        if use_mmr and len(results) > top_k:
-            results = self._mmr_diversify(results, query_vec, mmr_lambda, top_k)
+        # Apply MMR diversity if requested and we have more results than candidate_k
+        if use_mmr and len(results) > candidate_k:
+            results = self._mmr_diversify(results, query_vec, mmr_lambda, candidate_k)
         else:
-            results = results[:top_k]
+            results = results[:candidate_k]
+
+        results = results[:top_k] if candidate_k == top_k else results
 
         # Batch-update access tracking for retrieved memories
         now_iso = datetime.now().isoformat()

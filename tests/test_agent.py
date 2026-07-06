@@ -147,3 +147,85 @@ class TestMemoryAgent:
         curve.reinforce_and_access(mem)
         # reinforce() itself increments by 1, so access_count should be 1
         assert mem.access_count == 1
+
+    def test_preference_extraction_adds_topic_and_polarity(self):
+        from memory_agent.agent.decision import extract_from_input
+
+        memories = extract_from_input("Me gusta Python")
+
+        assert memories
+        assert memories[0].metadata["topic"] == "python"
+        assert memories[0].metadata["polarity"] == "positive"
+
+    def test_negative_preference_extraction_adds_negative_polarity(self):
+        from memory_agent.agent.decision import extract_from_input
+
+        memories = extract_from_input("No me gusta Python")
+
+        assert memories
+        assert memories[0].metadata["topic"] == "python"
+        assert memories[0].metadata["polarity"] == "negative"
+
+    def test_explicit_forget_detection(self):
+        from memory_agent.agent.decision import extract_forget_query
+
+        assert extract_forget_query("forget python") == "python"
+        assert extract_forget_query("olvida que me gusta python") == "me gusta python"
+        assert extract_forget_query("Me gusta Python") is None
+
+    def test_duplicate_preference_is_not_stored_twice(self, agent: MemoryAgent):
+        agent.init_session()
+        agent.perceive("Me gusta Python")
+        first_total = agent.state.total_memories
+
+        result = agent.perceive("Me gusta programar en Python")
+
+        active_preferences = [
+            m for m in agent.store.get_all_active_memories()
+            if m.memory_type == "preference" and "python" in m.content.lower()
+        ]
+        assert len(active_preferences) == 1
+        assert result["consolidation_decisions"]
+        assert agent.state.total_memories <= first_total + 1
+
+    def test_changed_preference_supersedes_old_preference(self, agent: MemoryAgent):
+        agent.init_session("session 1")
+        agent.perceive("Me gusta Python")
+        agent.end_session()
+
+        agent.init_session("session 2")
+        agent.perceive("No me gusta Python")
+
+        all_memories = [
+            agent.store.get_memory(m.id)
+            for m in agent.store.get_all_active_memories()
+            if m.id
+        ]
+        active_python_preferences = [
+            m for m in all_memories
+            if m is not None and m.memory_type == "preference" and "python" in m.content.lower()
+        ]
+        assert len(active_python_preferences) == 1
+        assert "no le gusta" in active_python_preferences[0].content.lower()
+
+        archived_count = agent.store.count_memories(active_only=False) - agent.store.count_memories(active_only=True)
+        assert archived_count >= 1
+
+    def test_explicit_forget_removes_memory_from_default_recall(self, agent: MemoryAgent):
+        agent.init_session()
+        agent.perceive("Me gusta Python")
+
+        result = agent.perceive("forget python")
+
+        assert result["archived"] >= 1
+        active_contents = [m.content.lower() for m in agent.store.get_all_active_memories()]
+        assert not any("prefiere: python" in content for content in active_contents)
+
+    def test_perceive_returns_recall_packet(self, agent: MemoryAgent):
+        agent.init_session()
+        agent.perceive("Me gusta Python")
+
+        result = agent.perceive("Que lenguaje me gusta?")
+
+        assert "recall_packet" in result
+        assert result["recall_packet"].used_chars <= result["recall_packet"].available_chars

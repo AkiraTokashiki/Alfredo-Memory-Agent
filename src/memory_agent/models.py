@@ -92,6 +92,11 @@ class SearchResult:
     importance_score: float = 0.0
     strength_score: float = 0.0
 
+    @property
+    def estimated_chars(self) -> int:
+        """Approximate formatted context cost for this memory."""
+        return len(self.memory.content)
+
 
 @dataclass
 class SessionRecord:

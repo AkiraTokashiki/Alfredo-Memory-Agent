@@ -22,6 +22,29 @@ _PREFERENCE_PATTERNS: list[tuple[str, str]] = [
     (r"(?:usually|always|typically|normally)\s+(.+)", "habit"),
 ]
 
+_FORGET_PATTERNS: list[str] = [
+    r"(?:forget|remove|delete)\s+(?:that\s+)?(.+)",
+    r"(?:olvida|borra|elimina)\s+(?:que\s+)?(.+)",
+]
+
+
+def _topic_from_content(content: str) -> str:
+    topic = content.lower().strip()
+    topic = re.sub(r"^(el usuario prefiere:|al usuario no le gusta:|hecho:)\s*", "", topic)
+    topic = re.sub(r"[^a-z0-9áéíóúñü\s]+", "", topic)
+    return " ".join(topic.split())
+
+
+def extract_forget_query(text: str) -> str | None:
+    """Extract the target of an explicit forget request."""
+    text_lower = text.lower().strip()
+    for pattern in _FORGET_PATTERNS:
+        match = re.search(pattern, text_lower, re.IGNORECASE)
+        if match:
+            query = match.group(1).strip().rstrip(".,!?")
+            return query or None
+    return None
+
 
 def extract_preferences(text: str) -> list[tuple[str, str, float]]:
     """Extract (content, memory_type, importance) from user text.
@@ -90,21 +113,25 @@ def extract_from_input(text: str) -> list[MemoryRecord]:
     """
     memories: list[MemoryRecord] = []
 
-    # Extract preferences
     for content, mem_type, importance in extract_preferences(text):
+        polarity = "negative" if "no le gusta" in content.lower() else "positive"
         memories.append(MemoryRecord(
             content=content,
             memory_type=mem_type,
             importance=importance,
+            metadata={
+                "topic": _topic_from_content(content),
+                "polarity": polarity,
+            },
             tags=["extracted", "preference"],
         ))
 
-    # Extract facts
     for content, mem_type, importance in extract_facts(text):
         memories.append(MemoryRecord(
             content=content,
             memory_type=mem_type,
             importance=importance,
+            metadata={"topic": _topic_from_content(content)},
             tags=["extracted", "fact"],
         ))
 

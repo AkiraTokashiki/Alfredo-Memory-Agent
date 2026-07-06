@@ -17,16 +17,57 @@ from pathlib import Path
 from typing import Any
 
 from memory_agent.agent.decision import (
+    extract_forget_query,
     extract_from_input,
     should_remember,
     summarize_interaction,
 )
 from memory_agent.core.config import MemoryAgentConfig
 from memory_agent.core.embeddings import EmbeddingEngine
+from memory_agent.core.consolidation import (
+    ConsolidationAction,
+    ConsolidationDecision,
+    MemoryConsolidator,
+)
+from memory_agent.core.context_budget import ContextBudgetPacker, RecallPacket
 from memory_agent.core.forgetting import ForgettingCurve
 from memory_agent.core.memory_store import MemoryStore
 from memory_agent.core.retrieval import RetrievalEngine
 from memory_agent.models import AgentState, MemoryRecord, SearchResult
+
+class EmbeddingSimilarity:
+    """Text similarity adapter backed by the configured embedding engine."""
+
+    def __init__(self, embeddings: EmbeddingEngine) -> None:
+        self.embeddings = embeddings
+
+    def similarity(self, left: str, right: str) -> float:
+        left_vec = self.embeddings.decode_vector(self.embeddings.encode(left))
+        right_vec = self.embeddings.decode_vector(self.embeddings.encode(right))
+        semantic = self.embeddings.cosine_similarity(left_vec, right_vec)
+        return max(semantic, self._topic_similarity(left, right))
+
+    def _topic_similarity(self, left: str, right: str) -> float:
+        left_terms = set(self._normalize(left).split())
+        right_terms = set(self._normalize(right).split())
+        if not left_terms or not right_terms:
+            return 0.0
+        overlap = left_terms & right_terms
+        if not overlap:
+            return 0.0
+        return len(overlap) / min(len(left_terms), len(right_terms))
+
+    def _normalize(self, text: str) -> str:
+        lowered = text.lower()
+        for prefix in (
+            "el usuario prefiere:",
+            "al usuario no le gusta:",
+            "hecho:",
+            "usuario:",
+            "respuesta:",
+        ):
+            lowered = lowered.replace(prefix, " ")
+        return " ".join(lowered.split())
 
 
 class MemoryAgent:
@@ -58,6 +99,15 @@ class MemoryAgent:
         self.forgetting = ForgettingCurve(self.config.forcing)
         self.retrieval = RetrievalEngine(
             self.store, self.embeddings, self.config.retrieval
+        )
+        self.consolidator = MemoryConsolidator(
+            self.store,
+            EmbeddingSimilarity(self.embeddings),
+            self.config.consolidation,
+        )
+        self.context_packer = ContextBudgetPacker(
+            budget_chars=self.config.retrieval.context_budget_chars,
+            reserved_chars=self.config.retrieval.reserved_context_chars,
         )
 
         # Agent state
@@ -101,20 +151,34 @@ class MemoryAgent:
         recollections: list[SearchResult] = []
         new_memories: list[MemoryRecord] = []
         archived = 0
+        consolidation_decisions: list[ConsolidationDecision] = []
+        recall_packet: RecallPacket | None = None
 
-        # --- 1. EXTRACT memories from user input ---
+        # --- 1. EXTRACT and CONSOLIDATE memories from user input ---
+        forget_query = extract_forget_query(user_input)
+        if forget_query:
+            archived += self.consolidator.forget_matching(forget_query)
+
         extracted = extract_from_input(user_input)
         for mem in extracted:
-            self._store_memory(mem)
-            new_memories.append(mem)
+            decision = self.consolidator.consolidate(mem)
+            consolidation_decisions.append(decision)
+            if decision.new_memory_id is not None:
+                self._index_stored_memory(mem)
+                new_memories.append(mem)
+            if decision.action is ConsolidationAction.UPDATE:
+                archived += 1
 
         # --- 2. RETRIEVE relevant memories ---
-        if self.state.total_memories > 0:
-            recollections = self.retrieval.retrieve(
+        if self.store.count_memories() > 0:
+            candidate_recollections = self.retrieval.retrieve(
                 query=user_input,
                 top_k=self.config.retrieval.top_k,
+                candidate_k=self.config.retrieval.candidate_k,
                 use_mmr=True,
             )
+            recall_packet = self.context_packer.pack(candidate_recollections)
+            recollections = recall_packet.selected
 
             # Reinforce strength for retrieved memories
             for r in recollections:
@@ -165,6 +229,8 @@ class MemoryAgent:
             "turn_count": self.state.turn_count,
             "total_memories": self.state.total_memories,
             "archived": archived,
+            "recall_packet": recall_packet,
+            "consolidation_decisions": consolidation_decisions,
         }
 
     # ------------------------------------------------------------------
@@ -185,17 +251,24 @@ class MemoryAgent:
     def _store_memory(self, memory: MemoryRecord) -> int:
         """Store a memory and its embedding."""
         mid = self.store.add_memory(memory, commit=False)
+        self._index_stored_memory(memory)
+        return mid
 
-        # Compute and store embedding
+    def _index_stored_memory(self, memory: MemoryRecord) -> None:
+        """Store embedding and session accounting for an already-persisted memory."""
+        if memory.id is None:
+            return
+
         try:
             blob = self.embeddings.encode(memory.content)
-            self.store.save_embedding(mid, blob, self.embeddings.model_name, commit=False)
+            self.store.save_embedding(
+                memory.id, blob, self.embeddings.model_name, commit=False
+            )
         except Exception:
             # If embedding fails, store without it (will fall back to keyword search)
             pass
 
         self.state.session_memories += 1
-        return mid
 
     def _run_decay_cycle(self) -> None:
         """Apply forgetting curve to all active memories."""

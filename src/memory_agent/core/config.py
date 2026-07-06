@@ -48,6 +48,15 @@ class RetrievalConfig:
     # Maximum memories to retrieve
     top_k: int = 10
 
+    # Candidate pool size before context-budget packing
+    candidate_k: int = 20
+
+    # Character budget for formatted recollections
+    context_budget_chars: int = 2400
+
+    # Reserved characters for the current prompt and instructions
+    reserved_context_chars: int = 600
+
     # MMR diversity lambda (0 = pure relevance, 1 = pure diversity)
     mmr_lambda: float = 0.5
 
@@ -70,6 +79,15 @@ class ConsolidationConfig:
 
     # Max memories to keep in short-term working context
     working_context_size: int = 15
+
+    # Semantic threshold for treating a candidate as duplicate
+    duplicate_similarity_threshold: float = 0.88
+
+    # Semantic threshold for detecting same-topic preference replacement
+    supersede_similarity_threshold: float = 0.55
+
+    # Minimum score for explicit forget matches
+    explicit_forget_min_score: float = 0.35
 
 
 @dataclass
