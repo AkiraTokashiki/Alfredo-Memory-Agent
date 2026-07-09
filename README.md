@@ -1,5 +1,5 @@
 # Alfredo — MemoryAgent
-
+## [Video Demo Link](https://youtu.be/bg0th6M7qec)
 **Give your Qwen Cloud agent a brain that remembers, forgets, and learns.**
 
 Alfredo is a MemoryAgent that gives Qwen Cloud agents persistent, selective memory across sessions, recalling key user preferences and facts while filtering context with relevance, recency, importance, and decay.
@@ -343,7 +343,7 @@ MIT — use it, fork it, hack it.
 
 ---
 
-## 🏆 Hackathon Tips
+## 🏆 Tips
 
 - **Demo in 30 seconds**: `python examples/demo_basic.py`
 - **Show benchmarked scale**: run `python examples/demo_video.py` to show 25 users, 5,000 memories, 500 questions, and trust-policy decisions
