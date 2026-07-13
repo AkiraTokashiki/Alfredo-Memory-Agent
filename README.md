@@ -55,6 +55,62 @@ MMR diversity penalty then ensures you don't get 3 nearly-identical results.
 ---
 
 ## 🚀 Quick Start
+### 0. Five-minute offline quickstart
+
+The first run can be completely local and does not require an API key or a
+downloaded transformer model:
+
+```bash
+pip install -e .
+python -m memory_agent --offline quickstart
+```
+
+The command uses a temporary SQLite vault, stores one preference, recalls it
+on a later turn, prints the selected/dropped IDs and trust evidence, and then
+cleans up the temporary database. Use `--db path/to/vault.db` when you want
+the vault to persist. `--offline` is an explicit provider choice; it never
+silently replaces a configured semantic provider.
+
+For semantic embeddings, install/run the default production provider and keep
+its vault separate from deterministic offline vaults:
+
+```bash
+pip install -e .
+python -m memory_agent chat
+```
+
+Alfredo rejects persisted vectors whose provider or dimension does not match
+the active embedding engine. Reindex or choose a separate database instead of
+mixing semantic and deterministic vectors.
+
+For the reproducible synthetic comparison:
+
+```bash
+python -m memory_agent --offline benchmark compare \
+  --users benchmarks/alfredos_vault/users.json \
+  --memories benchmarks/alfredos_vault/memories.jsonl \
+  --questions benchmarks/alfredos_vault/evaluation_questions.jsonl \
+  --report .alfredo/benchmark-comparison.json \
+  --seed 42 --run local-offline
+```
+
+The comparison reports raw-history, semantic-RAG and Alfredo strategies,
+dataset/config hashes, per-question retrieved/ignored IDs, confidence,
+security events, context size, and latency p50/p95. It accepts synthetic
+fixtures only and requires `--offline` for deterministic execution.
+
+### Security and privacy contract
+
+Namespaces isolate users and tenants. Trust filtering runs before context
+packing; expired, forgotten, superseded, sensitive, low-confidence and
+prompt-injection memories are not placed in model context. Explicit `forget`
+archives the matching memory in its namespace. Do not put secrets in a shared
+vault; use a separate database or namespace and apply your own retention and
+access controls in production.
+
+The CLI/MCP responses expose the effective namespace, lifecycle state,
+selected/dropped IDs, and trust evidence (`trust` plus `reason`) so callers can
+audit why a memory was accepted or ignored.
 
 ### 1. Install
 
