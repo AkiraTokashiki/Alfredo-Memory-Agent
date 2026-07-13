@@ -24,7 +24,7 @@ from memory_agent.agent.decision import (
     summarize_interaction,
 )
 from memory_agent.core.config import MemoryAgentConfig
-from memory_agent.core.embeddings import EmbeddingEngine
+from memory_agent.core.embeddings import create_embedding_engine
 from memory_agent.core.consolidation import (
     ConsolidationAction,
     ConsolidationDecision,
@@ -122,8 +122,10 @@ class MemoryAgent:
         self.embeddings = (
             embedder
             if embedder is not None
-            else EmbeddingEngine(
+            else create_embedding_engine(
+                provider=self.config.embedding.provider,
                 model_name=self.config.embedding.model_name,
+                dimension=self.config.embedding.dimension,
                 cache_size=self.config.embedding.cache_size,
             )
         )
@@ -368,9 +370,14 @@ class MemoryAgent:
                 namespace=active_namespace,
                 commit=False,
             )
-        except Exception:
-            # If embedding fails, store without it (keyword retrieval remains valid).
-            pass
+        except Exception as exc:
+            if getattr(self.embeddings, "provider", None) == "deterministic-fallback":
+                # Legacy direct EmbeddingEngine() callers retain keyword-only fallback.
+                pass
+            else:
+                raise RuntimeError(
+                    "Configured embedding provider failed while indexing a memory"
+                ) from exc
 
         self.state.session_memories += 1
 

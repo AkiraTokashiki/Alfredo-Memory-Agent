@@ -1,10 +1,12 @@
 """Tests for retrieval engine."""
 
 from __future__ import annotations
-
 import tempfile
+
+import pickle
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from memory_agent.core.config import RetrievalConfig
@@ -74,6 +76,55 @@ class TestRetrievalEngine:
         assert len(results) >= 1
         assert "Python" in results[0].memory.content
 
+    def test_rejects_stored_embedding_from_different_model(
+        self, store: MemoryStore, embeddings: EmbeddingEngine
+    ):
+        ids = _seed(store, ["I like coffee"])
+        stored = store.get_embedding(ids[0])
+        assert stored is not None
+        store.save_embedding(ids[0], stored[0], "different-production-model")
+
+        with pytest.raises(ValueError, match="Embedding model mismatch"):
+            RetrievalEngine(store, embeddings).retrieve("coffee")
+
+    def test_rejects_stored_embedding_with_incompatible_dimension(
+        self, store: MemoryStore, embeddings: EmbeddingEngine
+    ):
+        ids = _seed(store, ["I like coffee"])
+        store.save_embedding(
+            ids[0], pickle.dumps(np.zeros(2, dtype=np.float32)), embeddings.model_name
+        )
+
+        with pytest.raises(ValueError, match="Embedding dimension mismatch"):
+            RetrievalEngine(store, embeddings).retrieve("coffee")
+
+
+    def test_rejects_legacy_fallback_blob_labeled_as_semantic_model(
+        self, store: MemoryStore
+    ):
+        legacy = EmbeddingEngine()
+        legacy._dimension = 12
+        memory_id = store.add_memory(MemoryRecord(content="legacy memory"))
+        store.save_embedding(
+            memory_id,
+            legacy.encode("legacy memory"),
+            "all-MiniLM-L6-v2",
+        )
+
+        semantic = EmbeddingEngine(provider="sentence-transformers")
+
+        class FakeModel:
+            def get_embedding_dimension(self) -> int:
+                return 12
+
+            def encode(self, text: str, **kwargs):
+                return np.ones(12, dtype=np.float32)
+
+        semantic._model = FakeModel()
+        semantic._dimension = 12
+
+        with pytest.raises(ValueError, match="Embedding provenance mismatch"):
+            RetrievalEngine(store, semantic).retrieve("legacy")
     def test_importance_boosts_score(self, store: MemoryStore, embeddings: EmbeddingEngine):
         """More important memories should rank higher with similar content."""
         _seed(store, ["I like coffee"], importance=0.3)

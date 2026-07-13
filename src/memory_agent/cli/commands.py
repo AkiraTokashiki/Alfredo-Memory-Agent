@@ -2,28 +2,38 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
 
+from memory_agent.core.config import MemoryAgentConfig
+from memory_agent.core.embeddings import create_embedding_engine
+from memory_agent.core.memory_store import MemoryStore
+
+logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from memory_agent.agent.orchestrator import MemoryAgent
-from memory_agent.core.config import MemoryAgentConfig
-from memory_agent.core.memory_store import MemoryStore
 
 
 @click.group()
 @click.option("--db", default=None, help="Path to SQLite database file")
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="Use deterministic hashed-token embeddings without model downloads",
+)
 @click.option(
     "--model",
     default=None,
     help="Embedding model name (sentence-transformers)",
 )
 @click.pass_context
-def cli(ctx: click.Context, db: str | None, model: str | None) -> None:
+def cli(ctx: click.Context, db: str | None, model: str | None, offline: bool) -> None:
     """MemoryAgent — persistent memory for AI agents.
 
     An agent that accumulates experience autonomously, remembers
@@ -39,13 +49,15 @@ def cli(ctx: click.Context, db: str | None, model: str | None) -> None:
         db_path = Path(config.db_path).expanduser().resolve()
     if model:
         config.embedding.model_name = model
+    if offline:
+        config.embedding.provider = "deterministic"
 
     # Subcommands create MemoryAgent lazily. Benchmark commands can seed/evaluate
     # SQLite without loading an embedding model.
     ctx.obj["config"] = config
     ctx.obj["db_path"] = db_path
+    ctx.obj["db_explicit"] = db is not None
     ctx.obj["agent"] = None
-
 
 
 def _get_agent(ctx: click.Context) -> MemoryAgent:
@@ -53,7 +65,18 @@ def _get_agent(ctx: click.Context) -> MemoryAgent:
     if agent is None:
         from memory_agent.agent.orchestrator import MemoryAgent
 
-        agent = MemoryAgent(config=ctx.obj["config"], db_path=ctx.obj["db_path"])
+        config = ctx.obj["config"]
+        embedder = create_embedding_engine(
+            provider=config.embedding.provider,
+            model_name=config.embedding.model_name,
+            dimension=config.embedding.dimension,
+            cache_size=config.embedding.cache_size,
+        )
+        agent = MemoryAgent(
+            config=config,
+            db_path=ctx.obj["db_path"],
+            embedder=embedder,
+        )
         ctx.obj["agent"] = agent
     return agent
 
@@ -61,6 +84,63 @@ def _get_agent(ctx: click.Context) -> MemoryAgent:
 # ------------------------------------------------------------------
 # Commands
 # ------------------------------------------------------------------
+
+@cli.command()
+@click.pass_context
+def quickstart(ctx: click.Context) -> None:
+    """Run a temporary SQLite cross-turn recall without external services."""
+    config = ctx.obj["config"]
+    if config.embedding.provider != "deterministic":
+        raise click.UsageError("quickstart requires the explicit --offline option")
+
+    original_db_path = ctx.obj["db_path"]
+    use_temporary_db = not ctx.obj.get("db_explicit", False)
+    temporary = tempfile.TemporaryDirectory(prefix="memory-agent-quickstart-")
+    agent = None
+    session_active = False
+    try:
+        if use_temporary_db:
+            ctx.obj["db_path"] = Path(temporary.name) / "memory.db"
+        agent = _get_agent(ctx)
+        agent.init_session(label="quickstart")
+        session_active = True
+        agent.perceive("I prefer Python for automation")
+        agent.end_session()
+        session_active = False
+
+        agent.init_session(label="quickstart-recall")
+        session_active = True
+        result = agent.perceive("What programming language do I prefer?")
+        recalled = result["recollection_text"]
+        click.echo("Offline quickstart (deterministic embeddings)")
+        if not recalled:
+            raise click.ClickException(
+                "Quickstart could not recall the stored memory from SQLite"
+            )
+        click.echo("Remembered:")
+        click.echo(recalled)
+        click.echo(f"SQLite vault: {ctx.obj['db_path']}")
+    finally:
+        primary_active = sys.exc_info()[0] is not None
+        cleanup_error: BaseException | None = None
+
+        def run_cleanup(action) -> None:
+            nonlocal cleanup_error
+            try:
+                action()
+            except BaseException as exc:
+                logger.debug("quickstart cleanup step failed", exc_info=True)
+                if cleanup_error is None:
+                    cleanup_error = exc
+
+        if agent is not None and session_active:
+            run_cleanup(agent.end_session)
+        if agent is not None:
+            run_cleanup(agent.store.close)
+        run_cleanup(lambda: ctx.obj.__setitem__("db_path", original_db_path))
+        run_cleanup(temporary.cleanup)
+        if not primary_active and cleanup_error is not None:
+            raise cleanup_error
 
 
 @cli.command()

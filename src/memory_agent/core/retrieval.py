@@ -45,7 +45,28 @@ class RetrievalEngine:
         blob = self.store.get_embedding(memory_id, namespace=namespace)
         if blob is None:
             return 0.0
+        stored_model = blob[1]
+        if stored_model != self.embeddings.model_name:
+            raise ValueError(
+                "Embedding model mismatch: stored embeddings use "
+                f"{stored_model!r}, but the configured provider uses "
+                f"{self.embeddings.model_name!r}. Use a separate DB or reindex."
+            )
         mem_vec = self.embeddings.decode_vector(blob[0])
+        if (
+            getattr(self.embeddings, "provider", None)
+            in {"sentence-transformers", "sentence_transformers"}
+            and getattr(mem_vec, "provenance", None) != "sentence-transformers"
+        ):
+            raise ValueError(
+                "Embedding provenance mismatch: stored vector lacks semantic "
+                "provider metadata. Reindex the DB before semantic retrieval."
+            )
+        if np.asarray(mem_vec).shape != np.asarray(query_vec).shape:
+            raise ValueError(
+                "Embedding dimension mismatch: stored vectors are incompatible "
+                "with the configured provider. Use a separate DB or reindex."
+            )
         return self.embeddings.cosine_similarity(query_vec, mem_vec)
 
     def recency_score(self, hours_since_access: float) -> float:

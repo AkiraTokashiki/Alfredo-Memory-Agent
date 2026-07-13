@@ -94,17 +94,21 @@ class ConsolidationConfig:
 
 @dataclass
 class EmbeddingConfig:
-    """Embedding model configuration."""
+    """Embedding provider and vector configuration."""
 
-    # Model name from sentence-transformers
+    # Production model provider. Offline callers must opt into deterministic.
+    provider: Literal["sentence-transformers", "sentence_transformers", "deterministic"] = (
+        "sentence-transformers"
+    )
+
+    # Model name from sentence-transformers (ignored by deterministic provider).
     model_name: str = "all-MiniLM-L6-v2"
 
-    # Dimension of the model output vectors
+    # Dimension of the model output vectors.
     dimension: int = 384
 
-    # Cache size for embedding queries
+    # Cache size for embedding queries.
     cache_size: int = 1024
-
 
 @dataclass
 class TrustConfig:
