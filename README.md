@@ -66,10 +66,10 @@ python -m memory_agent --offline quickstart
 ```
 
 The command uses a temporary SQLite vault, stores one preference, recalls it
-on a later turn, prints the selected/dropped IDs and trust evidence, and then
-cleans up the temporary database. Use `--db path/to/vault.db` when you want
-the vault to persist. `--offline` is an explicit provider choice; it never
-silently replaces a configured semantic provider.
+on a later turn, prints the remembered text, and then cleans up the temporary
+database. Use `--db path/to/vault.db` when you want the vault to persist.
+`--offline` is an explicit provider choice; it never silently replaces a
+configured semantic provider.
 
 For semantic embeddings, install/run the default production provider and keep
 its vault separate from deterministic offline vaults:
@@ -101,9 +101,10 @@ fixtures only and requires `--offline` for deterministic execution.
 
 ### Security and privacy contract
 
-Namespaces isolate users and tenants. Trust filtering runs before context
-packing; expired, forgotten, superseded, sensitive, low-confidence and
-prompt-injection memories are not placed in model context. Explicit `forget`
+Namespaces isolate users and tenants at the storage and facade boundaries.
+The runtime trust policy filters low-confidence and explicitly forgotten or
+superseded records before context packing; the synthetic benchmark additionally
+tests expired, sensitive and prompt-injection records. Explicit `forget`
 archives the matching memory in its namespace. Do not put secrets in a shared
 vault; use a separate database or namespace and apply your own retention and
 access controls in production.
