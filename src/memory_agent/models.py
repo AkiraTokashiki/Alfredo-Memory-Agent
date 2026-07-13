@@ -197,6 +197,24 @@ class SearchResult:
     def estimated_chars(self) -> int:
         """Approximate formatted context cost for this memory."""
         return len(self.memory.content)
+    @property
+    def matched_by(self) -> tuple[str, ...]:
+        """Signals that contributed to this result."""
+        return self.evidence.matched_by if self.evidence else ()
+
+    @property
+    def trust(self) -> str:
+        """Trust classification attached to this result."""
+        if self.evidence is not None:
+            return self.evidence.trust
+        if self.memory.confidence is None:
+            return "unknown"
+        return "trusted" if self.memory.confidence >= 0.5 else "untrusted"
+
+    @property
+    def reason(self) -> str:
+        """Deterministic explanation for this result."""
+        return self.evidence.reason if self.evidence else ""
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe public representation."""

@@ -10,7 +10,7 @@ import numpy as np
 from memory_agent.core.config import RetrievalConfig
 from memory_agent.core.embeddings import EmbeddingEngine
 from memory_agent.core.memory_store import MemoryStore
-from memory_agent.models import MemoryRecord, SearchResult
+from memory_agent.models import MemoryRecord, RetrievalEvidence, SearchResult
 
 
 class RetrievalEngine:
@@ -36,10 +36,14 @@ class RetrievalEngine:
     # ------------------------------------------------------------------
 
     def semantic_score(
-        self, query_vec: np.ndarray, memory_id: int
+        self,
+        query_vec: np.ndarray,
+        memory_id: int,
+        *,
+        namespace: str | None = None,
     ) -> float:
         """Cosine similarity between query and stored memory embedding."""
-        blob = self.store.get_embedding(memory_id)
+        blob = self.store.get_embedding(memory_id, namespace=namespace)
         if blob is None:
             return 0.0
         mem_vec = self.embeddings.decode_vector(blob[0])
@@ -65,27 +69,54 @@ class RetrievalEngine:
         self,
         memory: MemoryRecord,
         query_vec: np.ndarray | None = None,
+        *,
+        namespace: str | None = None,
+        min_score: float | None = None,
     ) -> SearchResult:
         """Compute the combined retrieval score for a single memory."""
-        # Semantic
         sem = 0.0
         if query_vec is not None and memory.id is not None:
-            sem = self.semantic_score(query_vec, memory.id)
+            sem = self.semantic_score(query_vec, memory.id, namespace=namespace)
 
-        # Recency
         rec = self.recency_score(memory.hours_since_access)
-
-        # Importance & strength
         imp = self.importance_score(memory.importance)
         strg = self.strength_score(memory.strength)
-
         total = (
             self.config.w_semantic * sem
             + self.config.w_recency * rec
             + self.config.w_importance * imp
             + self.config.w_strength * strg
         )
-
+        signal_threshold = (
+            min_score if min_score is not None else self.config.min_score
+        )
+        matched_by = tuple(
+            name
+            for name, value in (
+                ("semantic", sem),
+                ("recency", rec),
+                ("importance", imp),
+                ("strength", strg),
+            )
+            if value >= signal_threshold
+        )
+        trust = self._trust_for(memory)
+        if trust == "untrusted":
+            confidence = memory.confidence
+            reason = f"filtered: trust=untrusted (confidence={confidence:.3f})"
+        else:
+            signal_text = ", ".join(matched_by) or "none"
+            reason = f"matched by {signal_text}; trust={trust}"
+        evidence = RetrievalEvidence(
+            score=total,
+            semantic_score=sem,
+            recency_score=rec,
+            importance_score=imp,
+            strength_score=strg,
+            matched_by=matched_by,
+            trust=trust,
+            reason=reason,
+        )
         return SearchResult(
             memory=memory,
             score=total,
@@ -93,7 +124,15 @@ class RetrievalEngine:
             recency_score=rec,
             importance_score=imp,
             strength_score=strg,
+            evidence=evidence,
         )
+
+    @staticmethod
+    def _trust_for(memory: MemoryRecord) -> str:
+        """Classify confidence without rejecting legacy unknown memories."""
+        if memory.confidence is None:
+            return "unknown"
+        return "trusted" if memory.confidence >= 0.5 else "untrusted"
 
     # ------------------------------------------------------------------
     # Full retrieval
@@ -108,19 +147,12 @@ class RetrievalEngine:
         use_mmr: bool = True,
         mmr_lambda: float | None = None,
         candidate_k: int | None = None,
+        namespace: str | None = None,
     ) -> list[SearchResult]:
         """Retrieve the most relevant memories for a query.
 
-        Args:
-            query: The natural language query text.
-            top_k: Max results to return (default: from config).
-            memory_type: Optional filter by memory type.
-            min_score: Minimum score threshold (default: from config).
-            use_mmr: Apply Maximum Marginal Relevance for diversity.
-            mmr_lambda: MMR trade-off (0=relevance only, 1=diversity only).
-
-        Returns:
-            Ranked list of SearchResult objects.
+        Candidate filtering, scoring, and MMR preserve the existing ranking
+        contract while attaching deterministic evidence to each result.
         """
         top_k = top_k or self.config.top_k
         candidate_k = candidate_k or top_k
@@ -132,18 +164,21 @@ class RetrievalEngine:
         query_blob = self.embeddings.encode(query)
         query_vec = self.embeddings.decode_vector(query_blob)
 
-        # Get candidate memories
         if memory_type:
-            candidates = self.store.get_memories_by_type(memory_type)
+            candidates = self.store.get_memories_by_type(
+                memory_type, namespace=namespace
+            )
         else:
-            candidates = self.store.get_all_active_memories()
+            candidates = self.store.get_all_active_memories(namespace=namespace)
 
         if not candidates:
             return []
 
-        # Score all candidates
         results = [
-            self.combined_score(mem, query_vec) for mem in candidates
+            self.combined_score(
+                mem, query_vec, namespace=namespace, min_score=min_score
+            )
+            for mem in candidates
         ]
 
         # Filter by minimum score
@@ -152,9 +187,10 @@ class RetrievalEngine:
         # Sort by score
         results.sort(key=lambda r: r.score, reverse=True)
 
-        # Apply MMR diversity if requested and we have more results than candidate_k
         if use_mmr and len(results) > candidate_k:
-            results = self._mmr_diversify(results, query_vec, mmr_lambda, candidate_k)
+            results = self._mmr_diversify(
+                results, query_vec, mmr_lambda, candidate_k, namespace=namespace
+            )
         else:
             results = results[:candidate_k]
 
@@ -162,19 +198,29 @@ class RetrievalEngine:
 
         # Batch-update access tracking for retrieved memories
         now_iso = datetime.now().isoformat()
-        updates: list[tuple[str, int, int]] = []
+        updates: list[tuple[Any, ...]] = []
         for r in results:
             if r.memory.id is not None:
                 r.memory.access_count += 1
                 r.memory.last_accessed_at = now_iso
-                updates.append(
-                    (now_iso, r.memory.access_count, r.memory.id)
-                )
+                if namespace is None:
+                    updates.append((now_iso, r.memory.access_count, r.memory.id))
+                else:
+                    updates.append(
+                        (now_iso, r.memory.access_count, r.memory.id, namespace)
+                    )
         if updates:
-            self.store.conn.executemany(
-                "UPDATE memories SET last_accessed_at = ?, access_count = ? WHERE id = ?",
-                updates,
-            )
+            if namespace is None:
+                self.store.conn.executemany(
+                    "UPDATE memories SET last_accessed_at = ?, access_count = ? WHERE id = ?",
+                    updates,
+                )
+            else:
+                self.store.conn.executemany(
+                    "UPDATE memories SET last_accessed_at = ?, access_count = ? "
+                    "WHERE id = ? AND namespace = ?",
+                    updates,
+                )
         self.store.conn.commit()
 
         return results
@@ -189,6 +235,8 @@ class RetrievalEngine:
         query_vec: np.ndarray,
         mmr_lambda: float,
         top_k: int,
+        *,
+        namespace: str | None = None,
     ) -> list[SearchResult]:
         """Apply MMR to maximize diversity while maintaining relevance.
 
@@ -214,11 +262,13 @@ class RetrievalEngine:
                 # Diversity component: max similarity to any selected
                 max_sim_to_selected = 0.0
                 if selected and cand.memory.id is not None:
-                    cand_vec = self._get_vec(cand.memory.id)
+                    cand_vec = self._get_vec(cand.memory.id, namespace=namespace)
                     if cand_vec is not None:
                         for sel in selected:
                             if sel.memory.id is not None:
-                                sel_vec = self._get_vec(sel.memory.id)
+                                sel_vec = self._get_vec(
+                                    sel.memory.id, namespace=namespace
+                                )
                                 if sel_vec is not None:
                                     sim = self.embeddings.cosine_similarity(
                                         cand_vec, sel_vec
@@ -226,7 +276,6 @@ class RetrievalEngine:
                                     max_sim_to_selected = max(
                                         max_sim_to_selected, sim
                                     )
-
                 mmr = mmr_lambda * relevance - (1 - mmr_lambda) * max_sim_to_selected
 
                 if mmr > best_mmr:
@@ -237,9 +286,11 @@ class RetrievalEngine:
 
         return selected
 
-    def _get_vec(self, memory_id: int) -> np.ndarray | None:
+    def _get_vec(
+        self, memory_id: int, *, namespace: str | None = None
+    ) -> np.ndarray | None:
         """Get decoded vector for a memory (with caching)."""
-        blob = self.store.get_embedding(memory_id)
+        blob = self.store.get_embedding(memory_id, namespace=namespace)
         if blob is None:
             return None
         return self.embeddings.decode_vector(blob[0])

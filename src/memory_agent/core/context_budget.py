@@ -22,6 +22,21 @@ class RecallPacket:
     def available_chars(self) -> int:
         return max(0, self.budget_chars - self.reserved_chars)
 
+    @property
+    def selected_ids(self) -> list[int]:
+        """Memory IDs selected for the context packet."""
+        return [result.memory.id for result in self.selected if result.memory.id is not None]
+
+    @property
+    def dropped_ids(self) -> list[int]:
+        """Memory IDs omitted from the context packet."""
+        return [result.memory.id for result in self.omitted if result.memory.id is not None]
+
+    @property
+    def limit(self) -> int:
+        """Configured total character limit, including reserved space."""
+        return self.budget_chars
+
 
 class ContextBudgetPacker:
     """Packs ranked memories into a character budget."""
@@ -37,8 +52,20 @@ class ContextBudgetPacker:
         reasons: dict[int, str] = {}
         used = 0
 
+        # Trust filtering is deliberately performed before ranking and budget
+        # accounting, so untrusted memories cannot consume context capacity.
+        ranked_input: list[SearchResult] = []
+        for result in results:
+            if result.trust == "untrusted":
+                omitted.append(result)
+                reasons[id(result)] = (
+                    f"omitted: trust={result.trust}; {result.reason or 'not trusted'}"
+                )
+            else:
+                ranked_input.append(result)
+
         ranked = sorted(
-            results,
+            ranked_input,
             key=lambda r: (
                 r.score / max(r.estimated_chars, 1),
                 r.score,
