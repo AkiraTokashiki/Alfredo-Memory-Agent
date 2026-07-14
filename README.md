@@ -97,7 +97,7 @@ For semantic embeddings, install/run the default production provider and keep
 its vault separate from deterministic offline vaults:
 
 ```bash
-pip install -e '.[semantic]'
+pip install -e ".[semantic]"
 python -m memory_agent chat
 ```
 

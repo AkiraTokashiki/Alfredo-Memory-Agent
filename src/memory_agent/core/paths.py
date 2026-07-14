@@ -17,7 +17,7 @@ def _is_dev_repo(path: Path) -> bool:
         return False
     try:
         document = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, UnicodeDecodeError, ValueError):
         return False
     project = document.get("project")
     return isinstance(project, dict) and project.get("name") == "alfredo-memory-agent"

@@ -78,6 +78,12 @@ def test_is_dev_repo_handles_unreadable_pyproject(monkeypatch, tmp_path):
     assert _is_dev_repo(tmp_path) is False
 
 
+def test_is_dev_repo_handles_invalid_utf8_pyproject(tmp_path):
+    (tmp_path / "pyproject.toml").write_bytes(b"[project]\nname = \xff\n")
+
+    assert _is_dev_repo(tmp_path) is False
+
+
 def test_default_memory_db_path_uses_memory_agent_db_filename(monkeypatch, tmp_path):
     home = tmp_path / "vault"
     monkeypatch.setenv("ALFREDO_HOME", str(home))
