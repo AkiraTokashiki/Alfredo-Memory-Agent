@@ -274,9 +274,16 @@ class LLMConnector:
         # 5. Update conversation history (keep last 20 for context)
         self.messages.append({"role": "user", "content": user_input})
         self.messages.append({"role": "assistant", "content": response})
-        if len(self.messages) > 21:  # system + 10 exchanges
-            # Keep system + last 20 messages (10 exchanges)
-            self.messages = [self.messages[0]] + self.messages[-20:]
+        has_system_prompt = bool(
+            self.messages and self.messages[0].get("role") == "system"
+        )
+        max_messages = 21 if has_system_prompt else 20
+        if len(self.messages) > max_messages:
+            # Preserve an initial system prompt and the last 20 conversation messages.
+            if has_system_prompt:
+                self.messages = [self.messages[0]] + self.messages[-20:]
+            else:
+                self.messages = self.messages[-20:]
 
         return response
 
