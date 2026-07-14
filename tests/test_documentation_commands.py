@@ -252,6 +252,46 @@ def test_hackathon_demo_uses_isolated_sqlite_without_remote_model(tmp_path: Path
     assert not list(tmp_path.rglob("hackathon_demo.db"))
 
 
+def test_hackathon_tempdir_cleanup_failure_preserves_primary(monkeypatch, tmp_path: Path) -> None:
+    repo_root = Path(__file__).parents[1]
+    script = repo_root / "examples" / "demo_hackathon.py"
+    spec = importlib.util.spec_from_file_location("hackathon_temp_failure", script)
+    assert spec is not None and spec.loader is not None
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+    events: list[str] = []
+
+    class FailingTempDir:
+        name = str(tmp_path)
+
+        def cleanup(self) -> None:
+            events.append("temp-cleanup")
+            raise RuntimeError("temp cleanup failure")
+
+    class FailingAgent:
+        def __init__(self, **_kwargs) -> None:
+            events.append("construct")
+
+        def init_session(self, *_args, **_kwargs) -> None:
+            events.append("init")
+
+        def perceive(self, _text: str) -> dict:
+            events.append("perceive")
+            raise RuntimeError("primary failure")
+
+        def end_session(self) -> None:
+            events.append("end")
+
+        def close(self) -> None:
+            events.append("close")
+
+    monkeypatch.setattr(demo.tempfile, "TemporaryDirectory", lambda **_kwargs: FailingTempDir())
+    monkeypatch.setattr(demo, "MemoryAgent", FailingAgent)
+    with pytest.raises(RuntimeError, match="primary failure"):
+        demo.main()
+    assert events == ["construct", "init", "perceive", "end", "close", "temp-cleanup"]
+
+
 @pytest.mark.parametrize("demo_filename", ["demo_basic.py", "demo_hackathon.py"])
 def test_existing_demos_preserve_primary_error_during_cleanup(
     monkeypatch, demo_filename: str

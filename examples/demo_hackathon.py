@@ -32,7 +32,9 @@ def print_turn(title: str, result: dict) -> None:
 
 def main() -> None:
     _configure_output()
-    with tempfile.TemporaryDirectory(prefix="alfredo-hackathon-") as temp_dir:
+    temporary = tempfile.TemporaryDirectory(prefix="alfredo-hackathon-")
+    try:
+        temp_dir = temporary.name
         db_path = Path(temp_dir) / "hackathon_demo.db"
         agent = None
         active_session = False
@@ -106,6 +108,14 @@ def main() -> None:
             run_cleanup(lambda: db_path.unlink(missing_ok=True))
             if not primary_active and cleanup_error is not None:
                 raise cleanup_error
+    finally:
+        primary_active = sys.exc_info()[0] is not None
+        try:
+            temporary.cleanup()
+        except BaseException:
+            if not primary_active:
+                raise
+
 
 
 if __name__ == "__main__":
