@@ -87,6 +87,8 @@ MCP server mode requires the `mcp` extra. The current server starts with the def
 
 The server exposes `memory__perceive`, `memory__search`, `memory__store`, `memory__stats`, `memory__forget`, and `memory__reinforce`. Every tool that accepts `namespace` passes it through the `MemoryAgent` facade. A namespace is a storage and session boundary: retrieval, statistics, store, forget, and reinforcement do not cross it. Responses include the effective namespace where applicable, plus lifecycle and evidence fields; perceive/search expose `selected_ids` and `dropped_ids`.
 
+The MCP resources `recent_memories` and `stats_resource` do not accept a `namespace` argument per request. They read the singleton server agent's current session scope, so they are **current-session scoped**, not a per-request isolation boundary. For tenant or agent isolation, use the tools above with an explicit `namespace` on every call rather than relying on a resource read.
+
 ### Hermes recipe
 
 Hermes supports both transports. The `mcp` extra is **required** for Alfredo's server, and the default `sentence-transformers` provider also needs the `semantic` extra. These commands are not offline; they need the default provider's dependencies/model, but no LLM API key is required by the MCP memory tools. Stdio is the simplest local path:
