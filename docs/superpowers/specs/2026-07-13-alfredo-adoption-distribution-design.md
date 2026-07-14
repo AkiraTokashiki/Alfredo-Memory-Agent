@@ -16,6 +16,32 @@ El público principal tiene dos perfiles equivalentes:
 1. desarrolladores Python que quieren una capa de memoria persistente para agentes;
 2. usuarios de agentes que quieren una integración MCP rápida.
 
+### Posicionamiento central
+
+Alfredo seguirá siendo inequívocamente un **MemoryAgent**, no un chatbot
+genérico, un wrapper de vector database ni una plataforma SaaS. Su promesa
+central será:
+
+> **Alfredo is the open-source memory layer for agents that learns from
+> experience, remembers what matters, forgets what is outdated, and explains
+> every recall within a bounded context window.**
+
+La propuesta debe comunicar cuatro capacidades inseparables:
+
+1. **Acumular experiencia:** convertir interacciones en memorias estructuradas,
+   con origen, confianza, importancia, namespace y estado de lifecycle.
+2. **Recuperar con criterio:** combinar significado, recencia, importancia,
+   fuerza, diversidad y trust en vez de copiar todo el historial al prompt.
+3. **Olvidar a tiempo:** reforzar recuerdos útiles, superseder preferencias
+   contradictorias y archivar información obsoleta o explícitamente olvidada.
+4. **Decidir con contexto limitado:** entregar solo las memorias críticas,
+   junto con IDs seleccionados/descartados y razones auditables.
+
+El mensaje de adopción nunca debe convertir “100k stars” en una afirmación de
+calidad garantizada. La popularidad se perseguirá mediante instalación simple,
+demo inmediata, benchmark reproducible, integraciones MCP y documentación clara;
+la identidad del producto seguirá siendo memoria persistente para agentes.
+
 ## Alcance aprobado
 
 ### README y primera impresión
