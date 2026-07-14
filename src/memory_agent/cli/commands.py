@@ -14,6 +14,7 @@ import click
 from memory_agent.core.config import MemoryAgentConfig
 from memory_agent.core.embeddings import create_embedding_engine
 from memory_agent.core.memory_store import MemoryStore
+from memory_agent.integrations.markdown_export import export_markdown
 
 logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
@@ -461,6 +462,26 @@ def memories(ctx: click.Context, namespace: str | None) -> None:
         )
         click.echo(f"      {m.content[:80]}")
         click.echo()
+
+
+@cli.command("export-markdown")
+@click.option("--namespace", required=True, help="Exact memory namespace to export")
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory for the Markdown projection",
+)
+@click.pass_context
+def export_markdown_command(ctx: click.Context, namespace: str, output: Path) -> None:
+    """Export active memories from SQLite as deterministic Markdown files."""
+    store = MemoryStore(ctx.obj["db_path"])
+    try:
+        store.initialize()
+        export_markdown(store, output, namespace)
+    finally:
+        store.close()
+    click.echo(f"Exported Markdown memories to {output}")
 
 
 
