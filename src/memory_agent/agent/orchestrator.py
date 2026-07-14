@@ -23,6 +23,7 @@ from memory_agent.agent.decision import (
     should_remember,
     summarize_interaction,
 )
+from memory_agent.core.evolution import OfflineEvolutionPlanner
 from memory_agent.core.config import MemoryAgentConfig
 from memory_agent.core.embeddings import create_embedding_engine
 from memory_agent.core.consolidation import (
@@ -34,8 +35,20 @@ from memory_agent.core.context_budget import ContextBudgetPacker, RecallPacket
 from memory_agent.core.forgetting import ForgettingCurve
 from memory_agent.core.memory_store import MemoryStore
 from memory_agent.core.retrieval import RetrievalEngine
-from memory_agent.models import AgentState, MemoryRecord, RetrievalEvidence, SearchResult
-from memory_agent.ports import EmbeddingPort, MemoryStorePort, RetrievalPort, TrustPolicyPort
+from memory_agent.models import (
+    AgentState,
+    EvolutionDecision,
+    MemoryRecord,
+    RetrievalEvidence,
+    SearchResult,
+)
+from memory_agent.ports import (
+    EmbeddingPort,
+    EvolutionPlannerPort,
+    MemoryStorePort,
+    RetrievalPort,
+    TrustPolicyPort,
+)
 
 
 class DefaultTrustPolicy:
@@ -107,6 +120,7 @@ class MemoryAgent:
         embedder: EmbeddingPort | None = None,
         retrieval: RetrievalPort | None = None,
         trust_policy: TrustPolicyPort | None = None,
+        evolution_planner: EvolutionPlannerPort | None = None,
     ):
         self.config = config or MemoryAgentConfig.default()
 
@@ -141,6 +155,7 @@ class MemoryAgent:
             if trust_policy is not None
             else DefaultTrustPolicy(self.config.trust.minimum_confidence)
         )
+        self.evolution_planner = evolution_planner or OfflineEvolutionPlanner()
         self.consolidator = MemoryConsolidator(
             self.store,
             EmbeddingSimilarity(self.embeddings),
@@ -399,6 +414,25 @@ class MemoryAgent:
                 "namespace": active_namespace,
             },
         }
+
+    def evolve_memory(
+        self,
+        candidate: MemoryRecord,
+        neighbors: list[MemoryRecord],
+        context: dict[str, Any] | None = None,
+        *,
+        namespace: str | None = None,
+        planner: EvolutionPlannerPort | None = None,
+    ) -> EvolutionDecision | None:
+        """Plan and apply one explicit, auditable memory evolution."""
+        active_namespace = namespace if namespace is not None else self.namespace
+        planning_context = dict(context or {})
+        planning_context.setdefault("namespace", active_namespace)
+        selected_planner = planner or self.evolution_planner
+        proposal = selected_planner.propose(candidate, neighbors, planning_context)
+        if proposal is None:
+            return None
+        return self.store.apply_evolution(proposal)
 
     def forget_memory(
         self, memory_id: int, *, namespace: str | None = None

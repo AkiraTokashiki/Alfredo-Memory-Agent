@@ -245,6 +245,120 @@ class RetrievalEvidence:
             "trust": self.trust,
             "reason": self.reason,
         })
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> RetrievalEvidence:
+        if not isinstance(d, dict):
+            raise TypeError("evidence payload must be a mapping")
+        matched_by = d.get("matched_by", ())
+        if isinstance(matched_by, str) or not isinstance(matched_by, (list, tuple)):
+            raise TypeError("evidence matched_by must be a sequence")
+        return cls(
+            score=d.get("score", 0.0),
+            semantic_score=d.get("semantic_score", 0.0),
+            recency_score=d.get("recency_score", 0.0),
+            importance_score=d.get("importance_score", 0.0),
+            strength_score=d.get("strength_score", 0.0),
+            matched_by=tuple(matched_by),
+            trust=d.get("trust", "unknown"),
+            reason=d.get("reason", ""),
+        )
+
+
+@dataclass(frozen=True)
+class EvolutionProposal:
+    """Validated, serializable description of a proposed memory evolution."""
+
+    candidate_id: int
+    target_ids: tuple[int, ...]
+    action: str
+    relation_type: str
+    metadata_patch: dict[str, Any]
+    confidence: float
+    actor: str
+    reason: str
+    namespace: str | None
+    evidence: RetrievalEvidence
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe({
+            "candidate_id": self.candidate_id,
+            "target_ids": list(self.target_ids),
+            "action": self.action,
+            "relation_type": self.relation_type,
+            "metadata_patch": self.metadata_patch,
+            "confidence": self.confidence,
+            "actor": self.actor,
+            "reason": self.reason,
+            "namespace": self.namespace,
+            "evidence": self.evidence.to_dict(),
+        })
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> EvolutionProposal:
+        if not isinstance(d, dict):
+            raise TypeError("evolution proposal payload must be a mapping")
+        target_ids = d.get("target_ids", ())
+        if isinstance(target_ids, str) or not isinstance(target_ids, (list, tuple)):
+            raise TypeError("evolution target_ids must be a sequence")
+        metadata_patch = d.get("metadata_patch", {})
+        if not isinstance(metadata_patch, dict):
+            raise TypeError("evolution metadata_patch must be a mapping")
+        evidence = d.get("evidence", {})
+        return cls(
+            candidate_id=d.get("candidate_id"),
+            target_ids=tuple(target_ids),
+            action=d.get("action", ""),
+            relation_type=d.get("relation_type", ""),
+            metadata_patch=metadata_patch,
+            confidence=d.get("confidence"),
+            actor=d.get("actor", ""),
+            reason=d.get("reason", ""),
+            namespace=d.get("namespace"),
+            evidence=(
+                evidence
+                if isinstance(evidence, RetrievalEvidence)
+                else RetrievalEvidence.from_dict(evidence)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class EvolutionDecision:
+    """Result of validating and applying (or rejecting) a proposal."""
+
+    accepted: bool
+    proposal: EvolutionProposal
+    reason: str
+    event_id: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe({
+            "accepted": self.accepted,
+            "proposal": self.proposal.to_dict(),
+            "reason": self.reason,
+            "event_id": self.event_id,
+        })
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> EvolutionDecision:
+        if not isinstance(d, dict):
+            raise TypeError("evolution decision payload must be a mapping")
+        proposal = d.get("proposal")
+        if isinstance(proposal, EvolutionProposal):
+            parsed = proposal
+        elif isinstance(proposal, dict):
+            parsed = EvolutionProposal.from_dict(proposal)
+        else:
+            raise TypeError("evolution decision proposal must be a mapping")
+        event_id = d.get("event_id")
+        if event_id is not None and (isinstance(event_id, bool) or not isinstance(event_id, int)):
+            raise TypeError("evolution event_id must be an integer or null")
+        return cls(
+            accepted=bool(d.get("accepted", False)),
+            proposal=parsed,
+            reason=d.get("reason", ""),
+            event_id=event_id,
+        )
 
 
 @dataclass

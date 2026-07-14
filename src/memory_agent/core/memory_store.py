@@ -8,7 +8,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from memory_agent.models import MemoryRecord, MemoryRelation, SessionRecord
+from memory_agent.models import (
+    EvolutionDecision,
+    EvolutionProposal,
+    MemoryRecord,
+    MemoryRelation,
+    SessionRecord,
+)
 from memory_agent.core.relations import RelationManager
 
 
@@ -103,6 +109,17 @@ class MemoryStore:
         FOREIGN KEY (source_id) REFERENCES memories(id) ON DELETE CASCADE,
         FOREIGN KEY (target_id) REFERENCES memories(id) ON DELETE CASCADE
     );
+    
+    CREATE TABLE IF NOT EXISTS memory_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        namespace TEXT,
+        memory_id INTEGER,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE SET NULL
+    );
 
     CREATE TABLE IF NOT EXISTS session_memories (
         session_id INTEGER NOT NULL,
@@ -120,7 +137,7 @@ class MemoryStore:
     CREATE INDEX IF NOT EXISTS idx_session_memories_session ON session_memories(session_id);
     """
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def initialize(self) -> None:
         """Create tables and apply idempotent, rollback-safe migrations."""
@@ -259,6 +276,153 @@ class MemoryStore:
     def commit(self) -> None:
         """Commit pending lifecycle mutations."""
         self.conn.commit()
+
+    def apply_evolution(self, proposal: EvolutionProposal) -> EvolutionDecision:
+        """Validate and apply one proposal, recording exactly one audit event."""
+        if not isinstance(proposal, EvolutionProposal):
+            raise TypeError("proposal must be an EvolutionProposal")
+
+        savepoint = "memory_evolution"
+        self.conn.execute(f"SAVEPOINT {savepoint}")
+        try:
+            rejection = self._validate_evolution(proposal)
+            if rejection is not None:
+                self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                event_id = self._record_evolution_event(
+                    "evolution_rejected", proposal, rejection
+                )
+                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                self.conn.commit()
+                return EvolutionDecision(False, proposal, rejection, event_id)
+
+            namespace = proposal.namespace
+            candidate = self.get_memory(proposal.candidate_id, namespace=namespace)
+            if candidate is None:
+                raise ValueError("candidate memory not found")
+            relation_confidence = proposal.confidence
+            for target_id in proposal.target_ids:
+                relation = MemoryRelation(
+                    source_id=proposal.candidate_id,
+                    target_id=target_id,
+                    relation_type=proposal.relation_type,
+                    confidence=relation_confidence,
+                    namespace=namespace,
+                    source=proposal.actor,
+                )
+                self.add_relation(relation, namespace=namespace, commit=False)
+
+            candidate.metadata = {
+                **candidate.metadata,
+                **dict(proposal.metadata_patch),
+            }
+            self.update_memory(candidate, namespace=namespace, commit=False)
+            for target_id in proposal.target_ids:
+                self.archive_memory(
+                    target_id,
+                    reason="superseded by accepted evolution",
+                    metadata={"superseded_by": proposal.candidate_id},
+                    namespace=namespace,
+                    commit=False,
+                )
+                target = self.get_memory(target_id, namespace=namespace)
+                if target is None:
+                    raise ValueError("target memory disappeared during evolution")
+                target.superseded_by = proposal.candidate_id
+                target.last_decision_reason = proposal.reason
+                self.update_memory(target, namespace=namespace, commit=False)
+
+            event_id = self._record_evolution_event(
+                "evolution_accepted", proposal, proposal.reason
+            )
+            self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            self.conn.commit()
+            return EvolutionDecision(True, proposal, "proposal applied", event_id)
+        except Exception as exc:
+            self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            rejection = self._safe_rejection_reason(exc)
+            event_id = self._record_evolution_event(
+                "evolution_rejected", proposal, rejection
+            )
+            self.conn.commit()
+            return EvolutionDecision(False, proposal, rejection, event_id)
+
+    def _validate_evolution(self, proposal: EvolutionProposal) -> str | None:
+        """Return a stable rejection reason without exposing proposal content."""
+        import math
+
+        if proposal.action not in {"supersede"}:
+            return "rejected: unsupported evolution action"
+        try:
+            RelationManager.validate_type(proposal.relation_type)
+        except (TypeError, ValueError):
+            return "rejected: unsupported relation type"
+        if proposal.action == "supersede" and proposal.relation_type != "supersedes":
+            return "rejected: supersede action requires supersedes relation"
+        try:
+            if not math.isfinite(proposal.confidence):
+                return "rejected: confidence must be finite"
+        except (TypeError, ValueError):
+            return "rejected: confidence must be finite"
+        try:
+            proposal.to_dict()
+        except (TypeError, ValueError):
+            return "rejected: proposal payload is not JSON-safe"
+        if proposal.evidence.trust != "trusted":
+            return "rejected: evidence is not trusted"
+        if not proposal.target_ids:
+            return "rejected: proposal has no targets"
+        if len(set(proposal.target_ids)) != len(proposal.target_ids):
+            return "rejected: proposal contains duplicate targets"
+        if any(isinstance(item, bool) or not isinstance(item, int) for item in proposal.target_ids):
+            return "rejected: target ids are invalid"
+        if isinstance(proposal.candidate_id, bool) or not isinstance(proposal.candidate_id, int):
+            return "rejected: candidate id is invalid"
+        candidate = self.get_memory(proposal.candidate_id, namespace=proposal.namespace)
+        if candidate is None:
+            return "rejected: candidate namespace or id mismatch"
+        if not candidate.is_active:
+            return "rejected: candidate memory is archived"
+        for target_id in proposal.target_ids:
+            if target_id == proposal.candidate_id:
+                return "rejected: candidate cannot target itself"
+            target = self.get_memory(target_id, namespace=proposal.namespace)
+            if target is None:
+                return "rejected: target namespace or id mismatch"
+            if not target.is_active:
+                return "rejected: target memory is archived"
+        try:
+            json.dumps(proposal.metadata_patch, allow_nan=False)
+        except (TypeError, ValueError):
+            return "rejected: metadata patch is not JSON-safe"
+        return None
+
+    @staticmethod
+    def _safe_rejection_reason(exc: Exception) -> str:
+        del exc
+        return "rejected: evolution transaction failed"
+
+    def _record_evolution_event(
+        self, event_type: str, proposal: EvolutionProposal, reason: str
+    ) -> int:
+        import re
+
+        actor_value = str(proposal.actor)
+        actor = (
+            actor_value
+            if re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", actor_value)
+            else "unknown"
+        )
+        exists = self.conn.execute(
+            "SELECT 1 FROM memories WHERE id = ?", (proposal.candidate_id,)
+        ).fetchone()
+        memory_id = proposal.candidate_id if exists is not None else None
+        cur = self.conn.execute(
+            "INSERT INTO memory_events "
+            "(event_type, actor, namespace, memory_id, reason) VALUES (?, ?, ?, ?, ?)",
+            (event_type, actor, proposal.namespace, memory_id, reason),
+        )
+        return int(cur.lastrowid)
     # ------------------------------------------------------------------
     # Memory CRUD
     # ------------------------------------------------------------------

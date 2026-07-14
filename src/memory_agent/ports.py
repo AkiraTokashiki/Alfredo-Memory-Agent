@@ -4,7 +4,26 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from .models import MemoryRecord, MemoryRelation, RetrievalEvidence, SearchResult
+from .models import (
+    EvolutionDecision,
+    EvolutionProposal,
+    MemoryRecord,
+    MemoryRelation,
+    RetrievalEvidence,
+    SearchResult,
+)
+ 
+ 
+@runtime_checkable
+class EvolutionPlannerPort(Protocol):
+    """Deterministic proposal generator for memory evolution."""
+
+    def propose(
+        self,
+        candidate: MemoryRecord,
+        neighbors: list[MemoryRecord],
+        context: dict[str, Any],
+    ) -> EvolutionProposal | None: ...
 
 
 @runtime_checkable
@@ -156,6 +175,7 @@ class MemoryStorePort(Protocol):
         accessed_at: str | None = None,
         commit: bool = True,
     ) -> None: ...
+    def apply_evolution(self, proposal: EvolutionProposal) -> EvolutionDecision: ...
 
 @runtime_checkable
 class EmbeddingPort(Protocol):
