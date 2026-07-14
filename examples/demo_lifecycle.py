@@ -70,7 +70,9 @@ def main() -> None:
     config.retrieval.top_k = 10
     config.retrieval.candidate_k = 20
 
-    with tempfile.TemporaryDirectory(prefix="alfredo-lifecycle-") as temp_dir:
+    temporary = tempfile.TemporaryDirectory(prefix="alfredo-lifecycle-")
+    try:
+        temp_dir = temporary.name
         db_path = Path(temp_dir) / "lifecycle.db"
         agent = None
         active_session = False
@@ -155,6 +157,13 @@ def main() -> None:
                 run_cleanup(agent.close)
             if not primary_active and cleanup_error is not None:
                 raise cleanup_error
+    finally:
+        primary_active = sys.exc_info()[0] is not None
+        try:
+            temporary.cleanup()
+        except BaseException:
+            if not primary_active:
+                raise
 
 
 if __name__ == "__main__":

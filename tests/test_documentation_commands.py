@@ -3,6 +3,7 @@
 import ast
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -29,11 +30,14 @@ class _QuickstartAgent:
     def __init__(self) -> None:
         self.store = _QuickstartStore()
         self.sessions: list[str] = []
+        self.ended_sessions: list[str] = []
         self.perceived: list[str] = []
+        self._active_label = ""
         self._turn = 0
 
     def init_session(self, *, label: str) -> None:
         self.sessions.append(label)
+        self._active_label = label
 
     def perceive(self, text: str) -> dict:
         self.perceived.append(text)
@@ -47,7 +51,8 @@ class _QuickstartAgent:
         }
 
     def end_session(self) -> None:
-        return None
+        self.ended_sessions.append(self._active_label)
+        self._active_label = ""
 
 
 def test_documented_offline_quickstart_runs_through_cli(monkeypatch) -> None:
@@ -65,6 +70,8 @@ def test_documented_offline_quickstart_runs_through_cli(monkeypatch) -> None:
         "I prefer Python for automation",
         "What programming language do I prefer?",
     ]
+    assert agent.sessions == ["quickstart", "quickstart-recall"]
+    assert agent.ended_sessions == ["quickstart", "quickstart-recall"]
     assert agent.store.closed is True
 
 
@@ -147,10 +154,95 @@ def test_lifecycle_demo_closes_active_session_when_perceive_fails(monkeypatch) -
 
         def close(self) -> None:
             events.append("close")
-
+            raise RuntimeError("close cleanup failure")
     monkeypatch.setattr(demo_lifecycle, "MemoryAgent", FailingAgent)
     with pytest.raises(RuntimeError, match="primary failure"):
         demo_lifecycle.main()
+    assert events == ["construct", "init", "perceive", "end", "close"]
+
+
+def test_basic_demo_runs_without_remote_model_download() -> None:
+    repo_root = Path(__file__).parents[1]
+    script = repo_root / "examples" / "demo_basic.py"
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert "Alfredo MemoryAgent — Basic Demo" in result.stdout
+    assert "Final statistics:" in result.stdout
+    assert "Demo complete." in result.stdout
+    assert "HF Hub" not in result.stdout + result.stderr
+    assert "Loading weights" not in result.stdout + result.stderr
+
+
+def test_hackathon_demo_uses_isolated_sqlite_without_remote_model(tmp_path: Path) -> None:
+    repo_root = Path(__file__).parents[1]
+    script = repo_root / "examples" / "demo_hackathon.py"
+    env = os.environ.copy()
+    env["ALFREDO_HOME"] = str(tmp_path / "alfredo-home")
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert "Alfredo MemoryAgent — Hackathon Demo" in result.stdout
+    assert "Session 1: learn preferences" in result.stdout
+    assert "Session 4: bounded recall after noise" in result.stdout
+    assert "=== Stats ===" in result.stdout
+    assert "HF Hub" not in result.stdout + result.stderr
+    assert "Loading weights" not in result.stdout + result.stderr
+    assert not list(tmp_path.rglob("hackathon_demo.db"))
+
+
+@pytest.mark.parametrize("demo_filename", ["demo_basic.py", "demo_hackathon.py"])
+def test_existing_demos_preserve_primary_error_during_cleanup(
+    monkeypatch, demo_filename: str
+) -> None:
+    repo_root = Path(__file__).parents[1]
+    script = repo_root / "examples" / demo_filename
+    module_name = f"failure_{demo_filename.removesuffix('.py')}"
+    spec = importlib.util.spec_from_file_location(module_name, script)
+    assert spec is not None and spec.loader is not None
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+    events: list[str] = []
+
+    class FailingAgent:
+        def __init__(self, **_kwargs) -> None:
+            events.append("construct")
+
+        def init_session(self, *_args, **_kwargs) -> None:
+            events.append("init")
+
+        def perceive(self, _text: str) -> dict:
+            events.append("perceive")
+            raise RuntimeError("primary failure")
+
+        def end_session(self) -> None:
+            events.append("end")
+            raise RuntimeError("end cleanup failure")
+
+        def close(self) -> None:
+            events.append("close")
+            raise RuntimeError("store cleanup failure")
+
+    monkeypatch.setattr(demo, "MemoryAgent", FailingAgent)
+    with pytest.raises(RuntimeError, match="primary failure"):
+        demo.main()
     assert events == ["construct", "init", "perceive", "end", "close"]
 
 

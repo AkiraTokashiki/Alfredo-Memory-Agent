@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
 
@@ -72,14 +73,23 @@ def main() -> None:
             print(f"archived: {stats['archived']}")
             print(f"types: {stats['type_distribution']}")
         finally:
-            try:
-                if agent is not None:
-                    try:
-                        agent.end_session()
-                    finally:
-                        agent.close()
-            finally:
-                db_path.unlink(missing_ok=True)
+            primary_active = sys.exc_info()[0] is not None
+            cleanup_error: BaseException | None = None
+
+            def run_cleanup(action) -> None:
+                nonlocal cleanup_error
+                try:
+                    action()
+                except BaseException as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+
+            if agent is not None:
+                run_cleanup(agent.end_session)
+                run_cleanup(agent.close)
+            run_cleanup(lambda: db_path.unlink(missing_ok=True))
+            if not primary_active and cleanup_error is not None:
+                raise cleanup_error
 
 
 if __name__ == "__main__":
