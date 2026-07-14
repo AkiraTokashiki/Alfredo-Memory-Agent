@@ -451,7 +451,9 @@ def run_mcp_server(host: str | None = None, port: int | None = None) -> None:
 
     if host and port:
         print(f"MemoryAgent MCP Server at http://{host}:{port}/mcp", file=sys.stderr)
-        mcp.run(transport="sse", host=host, port=port)
+        mcp.settings.host = host
+        mcp.settings.port = port
+        mcp.run(transport="sse")
     else:
         mcp.run(transport="stdio")
 
