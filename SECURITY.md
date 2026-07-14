@@ -4,7 +4,7 @@ Alfredo is a local-first SDK, not a hosted security service. The code and synthe
 
 ## Reporting a vulnerability or incident
 
-Please **do not** put exploitable details, credentials, personal data, or proof-of-concept payloads in a public issue. Report a suspected security vulnerability or security incident through the repository's **GitHub Security Advisory** flow (`Security` → `Advisories` → `Report a vulnerability`). That private maintainer channel is the supported reporting path. If the repository interface is unavailable, contact a repository maintainer through a private GitHub message and ask for the security-advisory channel; do not invent or rely on a public email address.
+Please **do not** put exploitable details, credentials, personal data, or proof-of-concept payloads in a public issue. Report a suspected security vulnerability or security incident through the repository's [GitHub Security Advisory form](https://github.com/AkiraTokashiki/Alfredo/security/advisories/new). This is the supported private maintainer channel for security reports. If the form is unavailable, do not publish exploit details; wait until a maintainer can restore the advisory path. Do not invent or rely on a public email address.
 
 Include, when safe:
 
