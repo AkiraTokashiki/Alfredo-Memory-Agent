@@ -11,6 +11,7 @@ def test_http_startup_configures_settings_and_uses_streamable_http_without_netwo
     """HTTP startup prewarms the agent and delegates only the transport to FastMCP."""
     warmed_agents: list[object] = []
     run_transports: list[str] = []
+    run_settings: list[tuple[str, int]] = []
     fake_agent = object()
 
     def fake_get_agent() -> object:
@@ -19,6 +20,7 @@ def test_http_startup_configures_settings_and_uses_streamable_http_without_netwo
 
     def fake_run(*, transport: str) -> None:
         # A transport-only signature makes passing unsupported host/port kwargs fail.
+        run_settings.append((mcp_server.mcp.settings.host, mcp_server.mcp.settings.port))
         run_transports.append(transport)
 
     monkeypatch.setattr(mcp_server, "_get_agent", fake_get_agent)
@@ -34,8 +36,7 @@ def test_http_startup_configures_settings_and_uses_streamable_http_without_netwo
 
         mcp_server.run_mcp_server("127.0.0.1", 9876)
 
-        assert settings.host == "127.0.0.1"
-        assert settings.port == 9876
+        assert run_settings == [("127.0.0.1", 9876)]
         assert warmed_agents == [fake_agent]
         assert run_transports == ["streamable-http"]
 
