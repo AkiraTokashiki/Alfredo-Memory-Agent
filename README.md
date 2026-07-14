@@ -1,6 +1,6 @@
 # Alfredo — MemoryAgent
 
-![Alfredo MemoryAgent lifecycle](docs/assets/alfredo-memory-lifecycle.svg)
+![Alfredo MemoryAgent lifecycle: learn, retrieve, trust, pack, reinforce, supersede or forget](docs/assets/alfredo-memory-lifecycle.svg)
 
 > **A local MemoryAgent that learns, remembers, forgets, and explains what it recalls.**
 > Alfredo keeps a durable, selective memory for an agent without turning your data into a hosted SaaS.
