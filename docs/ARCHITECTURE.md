@@ -54,6 +54,10 @@ Retrieval evidence records component scores, matched signals, trust classificati
 
 The checked-in Alfredo Vault fixtures are **synthetic** benchmark data. They exercise temporal recall, supersession, explicit forgetting, abstention, and prompt-injection cases to make decisions reproducible. A synthetic benchmark is **not a security or privacy audit and is no substitute for production privacy controls**. It does not authorize storing secrets, personal data, or regulated records. Production operators must define retention, deletion, access control, encryption, backup handling, and threat-model tests for their deployment.
 
+## LLM connector boundary
+
+The lifecycle above describes the `MemoryAgent` facade, CLI, and MCP operations. The standalone `LLMConnector` currently has a separate pre-call context path: `_build_memory_context` calls `self.agent.retrieval.retrieve(...)` directly and formats raw results, so it bypasses `search_memories`, the trust policy, `ContextBudgetPacker`, and the `selected_ids`/`dropped_ids` evidence contract. Its `turn` calls `self.agent.perceive(...)` only after the LLM response to store and update lifecycle state. Do not describe the connector's current prompt context as trust-filtered or bounded by the facade; a runtime fix is required before making that claim.
+
 ## Public components
 
 | Component | Source | Responsibility |
