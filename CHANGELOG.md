@@ -9,7 +9,7 @@ The repository currently provides:
 - the `alfredo-memory-agent` distribution metadata with the compatible `memory_agent` import namespace and `alfredo` CLI entry point;
 - a deterministic offline quickstart and local SQLite memory lifecycle;
 - namespace-aware retrieval, trust evidence, bounded context packets with selected and dropped IDs, reinforcement, supersession, decay, archive, and explicit forget operations;
-- MCP stdio/HTTP integration through the optional `mcp` extra;
+- MCP stdio/HTTP integration through the optional `mcp` extra; the current default server embedding provider additionally requires the `semantic` extra (`[mcp,semantic]`).
 - checked-in synthetic Alfredo Vault benchmark fixtures and offline comparison commands;
 - public README, integration, architecture, security, contributing, roadmap, and community-policy documentation contracts.
 
