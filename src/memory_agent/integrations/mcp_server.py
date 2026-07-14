@@ -5,7 +5,7 @@ can use its persistent memory capabilities.
 
 Usage:
     python -m memory_agent mcp                  # stdio transport (for Hermes config)
-    python -m memory_agent mcp --http 8080      # HTTP transport (for remote clients)
+    python -m memory_agent mcp --http --port 8080      # HTTP transport (for remote clients)
 
 Hermes config to add:
     mcp_servers:
@@ -451,9 +451,15 @@ def run_mcp_server(host: str | None = None, port: int | None = None) -> None:
 
     if host and port:
         print(f"MemoryAgent MCP Server at http://{host}:{port}/mcp", file=sys.stderr)
+        previous_host = mcp.settings.host
+        previous_port = mcp.settings.port
         mcp.settings.host = host
         mcp.settings.port = port
-        mcp.run(transport="sse")
+        try:
+            mcp.run(transport="streamable-http")
+        finally:
+            mcp.settings.host = previous_host
+            mcp.settings.port = previous_port
     else:
         mcp.run(transport="stdio")
 
