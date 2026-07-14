@@ -11,7 +11,7 @@
 
 ## What Alfredo is
 
-Alfredo is a Python SDK and CLI for a local memory layer. Its native store is SQLite, and the public package is distributed as `alfredo-memory-agent` while the import namespace remains `memory_agent`. You run it beside your agent and choose where its vault lives; there is no Alfredo-hosted dashboard, tenant service, billing account, or required remote memory API.
+Alfredo is a Python SDK and CLI for a local memory layer. Its native store is SQLite, and the intended distribution name is `alfredo-memory-agent` while the import namespace remains `memory_agent`. You run it beside your agent and choose where its vault lives; there is no Alfredo-hosted dashboard, tenant service, billing account, or required remote memory API.
 
 A conversation transcript is not a memory policy. Raw history grows without a bounded selection step, while a simple RAG index can return semantically similar text without deciding whether it is trusted, stale, superseded, or safe to pack into a prompt. Alfredo makes those decisions explicit and inspectable:
 
@@ -24,7 +24,7 @@ These are SDK behaviors, not a promise of automatic compliance or production sec
 
 ## Quickstart
 
-The canonical install and offline path use the published distribution and the `memory_agent` module:
+The canonical install contract uses the `alfredo-memory-agent` distribution name and the `memory_agent` module:
 
 ```bash
 pip install alfredo-memory-agent
