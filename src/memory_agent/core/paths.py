@@ -15,7 +15,7 @@ def _is_dev_repo(path: Path) -> bool:
     if not pyproject.exists():
         return False
     try:
-        return 'name = "memory-agent"' in pyproject.read_text(encoding="utf-8")
+        return 'name = "alfredo-memory-agent"' in pyproject.read_text(encoding="utf-8")
     except OSError:
         return False
 

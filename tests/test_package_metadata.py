@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from importlib.metadata import entry_points, metadata
+from importlib.metadata import distribution, metadata
 
 
 def test_distribution_metadata_identifies_alfredo_memory_agent() -> None:
@@ -15,10 +15,15 @@ def test_distribution_metadata_identifies_alfredo_memory_agent() -> None:
 
 
 def test_alfredo_console_script_targets_cli() -> None:
-    scripts = entry_points().select(group="console_scripts", name="alfredo")
+    package = distribution("alfredo-memory-agent")
+    scripts = [
+        entry_point
+        for entry_point in package.entry_points
+        if entry_point.group == "console_scripts" and entry_point.name == "alfredo"
+    ]
 
     assert len(scripts) == 1
-    assert next(iter(scripts)).value == "memory_agent.cli.commands:cli"
+    assert scripts[0].value == "memory_agent.cli.commands:cli"
 
 
 def test_memory_agent_public_imports_and_exports_remain_compatible() -> None:

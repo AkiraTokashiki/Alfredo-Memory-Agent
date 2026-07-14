@@ -438,7 +438,7 @@ def _stable_hash(value: Any) -> str:
 
 def _package_version() -> str:
     try:
-        return package_version("memory-agent")
+        return package_version("alfredo-memory-agent")
     except PackageNotFoundError:
         return "0.2.0"
 

@@ -25,7 +25,7 @@ def test_resolve_memory_home_uses_repo_local_alfredo_for_dev_repo(monkeypatch, t
     monkeypatch.delenv("ALFREDO_HOME", raising=False)
     repo = tmp_path / "Alfredo"
     repo.mkdir()
-    (repo / "pyproject.toml").write_text('[project]\nname = "memory-agent"\n', encoding="utf-8")
+    (repo / "pyproject.toml").write_text('[project]\nname = "alfredo-memory-agent"\n', encoding="utf-8")
 
     resolved = resolve_memory_home(project_root=repo)
 

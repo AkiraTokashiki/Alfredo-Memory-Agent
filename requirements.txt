@@ -1,1 +1,1 @@
-memory-agent>=0.1.0
+alfredo-memory-agent>=0.1.0

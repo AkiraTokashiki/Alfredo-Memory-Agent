@@ -25,7 +25,8 @@ def _require_sentence_transformers() -> None:
     except ImportError as exc:
         raise RuntimeError(
             "sentence-transformers is required for the configured production "
-            "provider; install memory-agent[semantic] or select provider='deterministic'"
+            "provider; install alfredo-memory-agent[semantic] or select "
+            "provider='deterministic'"
         ) from exc
 
 
@@ -131,8 +132,8 @@ class EmbeddingEngine:
             except ImportError as exc:
                 raise RuntimeError(
                     "sentence-transformers is required for the configured "
-                    "production provider; install memory-agent[semantic] or "
-                    "select provider='deterministic'"
+                    "production provider; install alfredo-memory-agent[semantic] "
+                    "or select provider='deterministic'"
                 ) from exc
 
             self._model = SentenceTransformer(self.model_name)
