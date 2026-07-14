@@ -170,6 +170,7 @@ class RetrievalEngine:
         namespace: str | None = None,
         commit: bool = True,
         record_access: bool = True,
+        include_related: bool = False,
     ) -> list[SearchResult]:
         """Retrieve the most relevant memories for a query.
 
@@ -217,8 +218,11 @@ class RetrievalEngine:
             results = results[:candidate_k]
 
         results = results[:top_k]
+        if include_related:
+            results = self._expand_related(results, query_vec, namespace=namespace)
 
         # Batch-update access tracking through the store contract.
+
         now_iso = datetime.now().isoformat()
         updates: list[tuple[int, int]] = []
         for r in results:
@@ -235,6 +239,56 @@ class RetrievalEngine:
             )
 
         return results
+
+    def _expand_related(
+        self,
+        base_results: list[SearchResult],
+        query_vec: np.ndarray,
+        *,
+        namespace: str | None,
+    ) -> list[SearchResult]:
+        """Append active same-namespace neighbors without changing base order."""
+        get_relations = getattr(self.store, "get_relations", None)
+        get_memory = getattr(self.store, "get_memory", None)
+        if get_relations is None or get_memory is None:
+            return base_results
+        expanded = list(base_results)
+        seen = {result.memory.id for result in base_results if result.memory.id is not None}
+        for anchor in base_results:
+            if anchor.memory.id is None:
+                continue
+            relations = list(get_relations(anchor.memory.id, namespace=namespace, active_only=True))
+            relations.extend(
+                relation
+                for relation in get_relations(
+                    namespace=namespace, target_id=anchor.memory.id, active_only=True
+                )
+                if relation.source_id != anchor.memory.id
+            )
+            for relation in relations:
+                neighbor_id = (
+                    relation.target_id
+                    if relation.source_id == anchor.memory.id
+                    else relation.source_id
+                )
+                if neighbor_id in seen:
+                    continue
+                neighbor = get_memory(neighbor_id, namespace=namespace)
+                if neighbor is None or not neighbor.is_active or neighbor.namespace != namespace:
+                    continue
+                result = self.combined_score(
+                    neighbor, query_vec, namespace=namespace, min_score=0.0
+                )
+                result.relation_evidence = ({
+                    "relation_id": relation.id,
+                    "relation_type": relation.relation_type,
+                    "confidence": relation.confidence,
+                    "namespace": relation.namespace,
+                    "via_memory_id": anchor.memory.id,
+                },)
+                expanded.append(result)
+                seen.add(neighbor_id)
+        return expanded
 
     # ------------------------------------------------------------------
     # Maximum Marginal Relevance (MMR)

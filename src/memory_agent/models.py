@@ -169,19 +169,37 @@ class MemoryRelation:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> MemoryRelation:
-        """Construct a relation from a JSON/SQLite-style mapping."""
+        """Construct a relation without coercing unsafe public values."""
+        if not isinstance(d, dict):
+            raise TypeError("relation payload must be a mapping")
+
+        def strict_int(name: str, value: Any, *, allow_none: bool = False) -> int | None:
+            if value is None and allow_none:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"relation {name} must be an integer")
+            return value
+
+        relation_type = d.get("relation_type", "related_to")
+        if not isinstance(relation_type, str):
+            raise TypeError("relation type must be a string")
         confidence = d.get("confidence", 1.0)
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            raise TypeError("relation confidence must be numeric")
+        is_active = d.get("is_active", True)
+        if not isinstance(is_active, bool):
+            raise TypeError("relation is_active must be a boolean")
         return cls(
-            id=int(d["id"]) if d.get("id") is not None else None,
-            source_id=int(d["source_id"]),
-            target_id=int(d["target_id"]),
-            relation_type=str(d.get("relation_type", "related_to")),
+            id=strict_int("id", d.get("id"), allow_none=True),
+            source_id=strict_int("source_id", d.get("source_id")),
+            target_id=strict_int("target_id", d.get("target_id")),
+            relation_type=relation_type,
             confidence=float(confidence),
             namespace=d.get("namespace"),
             created_at=d.get("created_at"),
             updated_at=d.get("updated_at"),
             source=d.get("source"),
-            is_active=bool(d.get("is_active", 1)),
+            is_active=is_active,
         )
 
 
@@ -240,11 +258,13 @@ class SearchResult:
     importance_score: float = 0.0
     strength_score: float = 0.0
     evidence: RetrievalEvidence | None = None
+    relation_evidence: tuple[dict[str, Any], ...] = ()
 
     @property
     def estimated_chars(self) -> int:
         """Approximate formatted context cost for this memory."""
         return len(self.memory.content)
+
     @property
     def matched_by(self) -> tuple[str, ...]:
         """Signals that contributed to this result."""
@@ -274,6 +294,7 @@ class SearchResult:
             "importance_score": self.importance_score,
             "strength_score": self.strength_score,
             "evidence": self.evidence.to_dict() if self.evidence else None,
+            "relation_evidence": [dict(item) for item in self.relation_evidence],
         })
 
 

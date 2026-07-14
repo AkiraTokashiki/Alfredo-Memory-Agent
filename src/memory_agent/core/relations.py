@@ -25,6 +25,8 @@ class RelationManager:
 
     @classmethod
     def validate_type(cls, relation_type: str) -> None:
+        if not isinstance(relation_type, str):
+            raise TypeError("relation type must be a string")
         if relation_type not in cls.allowed_types:
             raise ValueError(f"unknown relation type: {relation_type!r}")
 
@@ -41,12 +43,20 @@ class RelationManager:
     def validate_relation(cls, relation: MemoryRelation) -> None:
         if not isinstance(relation, MemoryRelation):
             raise TypeError("relation must be a MemoryRelation")
-        if relation.source_id is None or relation.target_id is None:
-            raise ValueError("relation endpoints are required")
+        for name, value in (("source_id", relation.source_id), ("target_id", relation.target_id)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"relation {name} must be an integer")
+        if relation.id is not None and (
+            isinstance(relation.id, bool) or not isinstance(relation.id, int)
+        ):
+            raise TypeError("relation id must be an integer")
         if relation.source_id == relation.target_id:
             raise ValueError("memory relations cannot link a memory to itself")
+        if not isinstance(relation.is_active, bool):
+            raise TypeError("relation is_active must be a boolean")
         cls.validate_type(relation.relation_type)
         cls.validate_confidence(relation.confidence)
+
 
     @classmethod
     def validate_endpoints(

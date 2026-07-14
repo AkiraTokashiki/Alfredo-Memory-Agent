@@ -254,6 +254,7 @@ class MemoryAgent:
                 namespace=active_namespace,
                 commit=False,
                 record_access=False,
+                include_related=True,
             )
             self._apply_trust_policy(candidate_recollections)
             recall_packet = self.context_packer.pack(candidate_recollections)
@@ -359,6 +360,7 @@ class MemoryAgent:
             memory_type=memory_type,
             use_mmr=True,
             namespace=active_namespace,
+            include_related=True,
         )
         self._apply_trust_policy(results)
         packet = self.context_packer.pack(results)

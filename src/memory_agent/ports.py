@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from .models import MemoryRecord, RetrievalEvidence, SearchResult
+from .models import MemoryRecord, MemoryRelation, RetrievalEvidence, SearchResult
 
 
 @runtime_checkable
@@ -31,6 +31,40 @@ class MemoryStorePort(Protocol):
     def update_memory(
         self,
         memory: MemoryRecord,
+        *,
+        namespace: str | None = None,
+        commit: bool = True,
+    ) -> None: ...
+
+    def delete_memory(
+        self,
+        memory_id: int,
+        *,
+        hard: bool = False,
+        namespace: str | None = None,
+    ) -> None: ...
+
+    def add_relation(
+        self,
+        relation: MemoryRelation,
+        *,
+        namespace: str | None = None,
+        commit: bool = True,
+    ) -> int: ...
+
+    def get_relations(
+        self,
+        source_id: int | None = None,
+        *,
+        namespace: str | None = None,
+        active_only: bool = True,
+        target_id: int | None = None,
+        relation_type: str | None = None,
+    ) -> list[MemoryRelation]: ...
+
+    def deactivate_relation(
+        self,
+        relation_id: int,
         *,
         namespace: str | None = None,
         commit: bool = True,
@@ -112,8 +146,8 @@ class MemoryStorePort(Protocol):
         namespace: str | None = None,
         commit: bool = True,
     ) -> int: ...
-
     def get_embedding_count(self, *, namespace: str | None = None) -> int: ...
+
     def record_access(
         self,
         accesses: list[tuple[int, int]],
@@ -122,7 +156,6 @@ class MemoryStorePort(Protocol):
         accessed_at: str | None = None,
         commit: bool = True,
     ) -> None: ...
-
 
 @runtime_checkable
 class EmbeddingPort(Protocol):
@@ -158,8 +191,9 @@ class RetrievalPort(Protocol):
         namespace: str | None = None,
         commit: bool = True,
         record_access: bool = True,
+        include_related: bool = False,
     ) -> list[SearchResult]:
-        """Return ranked candidates for a query."""
+        """Return ranked candidates and optional relation neighbors."""
         ...
 
 

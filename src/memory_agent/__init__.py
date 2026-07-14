@@ -3,6 +3,7 @@
 from .models import (
     AgentState,
     MemoryRecord,
+    MemoryRelation,
     RetrievalEvidence,
     SearchResult,
     SessionRecord,
@@ -13,6 +14,7 @@ __all__ = [
     "AgentState",
     "EmbeddingPort",
     "MemoryRecord",
+    "MemoryRelation",
     "MemoryStorePort",
     "RetrievalEvidence",
     "RetrievalPort",
