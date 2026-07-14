@@ -17,7 +17,9 @@ from .ports import (
     RetrievalPort,
     TrustPolicyPort,
 )
- 
+from .core.episodes import EpisodeSummary, EpisodeSummaryBuilder, consolidate_session
+from .core.task_memory import TaskMemoryPack, TaskMemoryPackStore, build_task_context
+
 __all__ = [
     "AgentState",
     "EmbeddingPort",
@@ -32,5 +34,11 @@ __all__ = [
     "SearchResult",
     "SessionRecord",
     "TrustPolicyPort",
+    "EpisodeSummary",
+    "EpisodeSummaryBuilder",
+    "TaskMemoryPack",
+    "TaskMemoryPackStore",
+    "build_task_context",
+    "consolidate_session",
 ]
 
