@@ -1,9 +1,13 @@
 """Smoke tests for commands documented as the public offline entry points."""
 
+import ast
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from click.testing import CliRunner
 
@@ -97,14 +101,55 @@ def test_lifecycle_demo_has_stable_four_stage_output() -> None:
     assert "consolidation=update" in output[recall_end:supersede_end]
     assert "archived=1" in output[recall_end:supersede_end]
     bounded = output[supersede_end:]
-    assert "packet selected: ids=[" in bounded
-    assert "packet omitted: ids=[" in bounded
-    assert "trusted" in bounded
-    assert "untrusted" in bounded
+    selected_line = next(
+        line for line in bounded.splitlines() if line.startswith("packet selected: ids=")
+    )
+    omitted_line = next(
+        line for line in bounded.splitlines() if line.startswith("packet omitted: ids=")
+    )
+    selected_ids = ast.literal_eval(selected_line.split("ids=", 1)[1].split(";", 1)[0])
+    omitted_ids = ast.literal_eval(omitted_line.split("ids=", 1)[1].split(";", 1)[0])
+    assert selected_ids
+    assert omitted_ids
+    trust_line = next(line for line in bounded.splitlines() if line.startswith("trust evidence:"))
+    assert "trusted" in trust_line
+    assert "untrusted" in trust_line
     assert "new memories:" in output
     assert "recall:" in output
     assert "lifecycle:" in output
     assert "created_at" not in output
+
+
+def test_lifecycle_demo_closes_active_session_when_perceive_fails(monkeypatch) -> None:
+    repo_root = Path(__file__).parents[1]
+    script = repo_root / "examples" / "demo_lifecycle.py"
+    spec = importlib.util.spec_from_file_location("demo_lifecycle_failure", script)
+    assert spec is not None and spec.loader is not None
+    demo_lifecycle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo_lifecycle)
+    events: list[str] = []
+
+    class FailingAgent:
+        def __init__(self, **_kwargs) -> None:
+            events.append("construct")
+
+        def init_session(self, _label: str) -> None:
+            events.append("init")
+
+        def perceive(self, _text: str) -> dict:
+            events.append("perceive")
+            raise RuntimeError("primary failure")
+
+        def end_session(self) -> None:
+            events.append("end")
+
+        def close(self) -> None:
+            events.append("close")
+
+    monkeypatch.setattr(demo_lifecycle, "MemoryAgent", FailingAgent)
+    with pytest.raises(RuntimeError, match="primary failure"):
+        demo_lifecycle.main()
+    assert events == ["construct", "init", "perceive", "end", "close"]
 
 
 def test_documented_benchmark_compare_options_create_offline_report(
