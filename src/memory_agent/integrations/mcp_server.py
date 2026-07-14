@@ -117,6 +117,9 @@ def _result_public(result: Any) -> dict[str, Any]:
                 flattened["evidence"] = payload["evidence"]
                 flattened["trust"] = payload["evidence"].get("trust", "unknown")
                 flattened["reason"] = payload["evidence"].get("reason", "")
+            relation_evidence = payload.get("relation_evidence")
+            if relation_evidence:
+                flattened["relation_evidence"] = relation_evidence
             return flattened
         return payload
     memory = result.memory
@@ -136,6 +139,9 @@ def _result_public(result: Any) -> dict[str, Any]:
             "strength": result.strength_score,
         },
     }
+    relation_evidence = getattr(result, "relation_evidence", ())
+    if relation_evidence:
+        payload["relation_evidence"] = _public(relation_evidence)
     if result.evidence is not None:
         payload["evidence"] = result.evidence.to_dict()
         payload["trust"] = result.trust
@@ -153,6 +159,9 @@ def _evidence_public(result: Any, reason: str | None = None) -> dict[str, Any]:
         "id": result.memory.id,
         **(result.evidence.to_dict() if result.evidence is not None else {}),
     }
+    relation_evidence = getattr(result, "relation_evidence", ())
+    if relation_evidence:
+        payload["relation_evidence"] = _public(relation_evidence)
     if reason:
         payload["reason"] = reason
     return _public(payload)
