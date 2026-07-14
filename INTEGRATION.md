@@ -191,7 +191,7 @@ The `llm` command is separate from offline memory and requires the provider's AP
 python -m pip install "alfredo-memory-agent[llm]"
 ```
 
-It is not needed for MCP or the local SDK. Provider names accepted by the CLI are `qwencloud`, `deepseek`, `openrouter`, `openai`, and `anthropic`; configure the corresponding provider dependency and environment variable before using it. Keep API-key-bearing deployment configuration out of SQLite records and issue trackers.
+It is not needed for MCP or the local SDK. Provider names accepted by the CLI are `qwencloud`, `deepseek`, `openrouter`, `openai`, and `anthropic`; set the corresponding API-key environment variable before using it. The `[llm]` extra supplies the shared `httpx` dependency; provider-specific API handling is built into the connector, including the native Anthropic Messages API. Keep API-key-bearing deployment configuration out of SQLite records and issue trackers.
 
 ## Verification
 

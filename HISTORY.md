@@ -5,8 +5,8 @@
 ### Completed features
 
 - Previous foundation work.
-- **MCP Server**: FastMCP server exposing six tools (`memory__perceive`, `memory__search`, `memory__store`, `memory__stats`, `memory__forget`, `memory__reinforce`), two resources, and one prompt. Supports stdio and HTTP. Integrates with Hermes through `hermes mcp add`, and can also be used by Claude Desktop, Cursor, and other MCP clients.
-- **LLM Connector**: `python -m memory_agent.integrations.llm_connector` provides an interactive session with DeepSeek, OpenRouter, OpenAI, or Anthropic while using MemoryAgent as persistent memory. Four providers are supported.
+- **MCP Server**: FastMCP server exposing six tools (`memory__perceive`, `memory__search`, `memory__store`, `memory__stats`, `memory__forget`, `memory__reinforce`), two resources, and one prompt. Supports stdio and Streamable HTTP at `/mcp`. Integrates with Hermes through `hermes mcp add`, and can also be used by Claude Desktop, Cursor, and other MCP clients.
+- **LLM Connector**: `python -m memory_agent llm` provides an interactive session with Qwen Cloud, DeepSeek, OpenRouter, OpenAI, or Anthropic while using MemoryAgent as persistent memory. Qwen Cloud, DeepSeek, OpenRouter, and OpenAI use OpenAI-compatible chat completions; Anthropic uses its native Messages API. Five providers are supported.
 - **Integration guide**: `INTEGRATION.md` documents Hermes configuration, MCP setup, terminal commands, and programmatic usage.
 - **Memory Store**: SQLite with WAL mode, five tables (`memories`, `embeddings`, `memory_tags`, `sessions`, `session_memories`), full CRUD, soft/hard delete, batch operations, and keyword-search fallback.
 - **Embedding Engine**: sentence-transformers (`all-MiniLM-L6-v2`, 384 dimensions), LRU cache, `encode_multiple` batching, and cosine similarity.

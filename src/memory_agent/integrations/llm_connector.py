@@ -1,18 +1,20 @@
-"""Standalone LLM connector: MemoryAgent + OpenAI-compatible API.
+"""Standalone LLM connector for MemoryAgent provider integrations.
 
-Connects MemoryAgent's persistent memory to any LLM with an OpenAI-compatible
-API (DeepSeek, OpenRouter, Anthropic, etc.).
+Uses OpenAI-compatible chat-completions APIs for Qwen Cloud, DeepSeek,
+OpenRouter, and OpenAI. Anthropic uses its native Messages API. The connector
+keeps MemoryAgent persistence local while the configured provider handles the
+LLM request.
 
 Usage:
-    # Set API key
+    # Set the provider API key
     set DEEPSEEK_API_KEY=sk-...     # Windows CMD
     export DEEPSEEK_API_KEY=sk-...  # bash
 
-    # Run with DeepSeek
-    python -m memory_agent.llm --provider deepseek --model deepseek-chat
+    # Run through the supported module CLI
+    python -m memory_agent llm --provider deepseek --model deepseek-chat
 
-    # Run with OpenRouter
-    python -m memory_agent.llm --provider openrouter --model openai/gpt-4o
+    # Or use OpenRouter
+    python -m memory_agent llm --provider openrouter --model openai/gpt-4o
 """
 
 from __future__ import annotations
