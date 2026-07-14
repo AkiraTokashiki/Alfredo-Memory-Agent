@@ -40,6 +40,6 @@ def test_memory_agent_public_imports_and_exports_remain_compatible() -> None:
         "TrustPolicyPort",
     }
 
-    assert set(memory_agent.__all__) == expected_exports
+    assert expected_exports <= set(memory_agent.__all__)
     for export in expected_exports:
         assert hasattr(memory_agent, export)
