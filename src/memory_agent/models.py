@@ -137,6 +137,54 @@ class MemoryRecord:
         )
 
 
+@dataclass
+class MemoryRelation:
+    """A typed, namespace-scoped edge between two memories."""
+
+    id: int | None = None
+    source_id: int = 0
+    target_id: int = 0
+    relation_type: str = "related_to"
+    confidence: float = 1.0
+    namespace: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    source: str | None = None
+    is_active: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe public representation."""
+        return _json_safe({
+            "id": self.id,
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "relation_type": self.relation_type,
+            "confidence": self.confidence,
+            "namespace": self.namespace,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "source": self.source,
+            "is_active": self.is_active,
+        })
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> MemoryRelation:
+        """Construct a relation from a JSON/SQLite-style mapping."""
+        confidence = d.get("confidence", 1.0)
+        return cls(
+            id=int(d["id"]) if d.get("id") is not None else None,
+            source_id=int(d["source_id"]),
+            target_id=int(d["target_id"]),
+            relation_type=str(d.get("relation_type", "related_to")),
+            confidence=float(confidence),
+            namespace=d.get("namespace"),
+            created_at=d.get("created_at"),
+            updated_at=d.get("updated_at"),
+            source=d.get("source"),
+            is_active=bool(d.get("is_active", 1)),
+        )
+
+
 @dataclass(frozen=True)
 class RetrievalEvidence:
     """Explain why a memory was selected or rejected during retrieval."""

@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from memory_agent.models import MemoryRecord, SessionRecord
+from memory_agent.models import MemoryRecord, MemoryRelation, SessionRecord
+from memory_agent.core.relations import RelationManager
 
 
 class MemoryStore:
@@ -88,6 +89,19 @@ class MemoryStore:
         namespace TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS memory_relations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER NOT NULL,
+        target_id INTEGER NOT NULL,
+        relation_type TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        namespace TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        source TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1
+    );
+
     CREATE TABLE IF NOT EXISTS session_memories (
         session_id INTEGER NOT NULL,
         memory_id INTEGER NOT NULL,
@@ -104,7 +118,7 @@ class MemoryStore:
     CREATE INDEX IF NOT EXISTS idx_session_memories_session ON session_memories(session_id);
     """
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def initialize(self) -> None:
         """Create tables and apply idempotent schema migrations."""
@@ -123,6 +137,17 @@ class MemoryStore:
                 "last_decision_reason": "TEXT",
             },
             "sessions": {"namespace": "TEXT"},
+            "memory_relations": {
+                "source_id": "INTEGER",
+                "target_id": "INTEGER",
+                "relation_type": "TEXT",
+                "confidence": "REAL",
+                "namespace": "TEXT",
+                "created_at": "TEXT",
+                "updated_at": "TEXT",
+                "source": "TEXT",
+                "is_active": "INTEGER NOT NULL DEFAULT 1",
+            },
         }
         for table, columns in columns_by_table.items():
             existing = {
@@ -140,6 +165,22 @@ class MemoryStore:
         )
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_namespace ON memories(namespace)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_relations_source "
+            "ON memory_relations(source_id)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_relations_target "
+            "ON memory_relations(target_id)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_relations_active "
+            "ON memory_relations(is_active) WHERE is_active = 1"
+        )
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_memory_relations_edge "
+            "ON memory_relations(source_id, target_id, relation_type, COALESCE(namespace, ''))"
         )
         self.conn.commit()
     def commit(self) -> None:
@@ -387,6 +428,155 @@ class MemoryStore:
         query += " ORDER BY created_at"
         rows = self.conn.execute(query, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Typed memory relations
+    # ------------------------------------------------------------------
+
+    def add_relation(
+        self,
+        relation: MemoryRelation,
+        *,
+        namespace: str | None = None,
+        commit: bool = True,
+    ) -> int:
+        """Persist a validated relation, returning its stable row id."""
+        RelationManager.validate_relation(relation)
+        if namespace is not None:
+            if relation.namespace is not None and relation.namespace != namespace:
+                raise ValueError("relation namespace does not match requested namespace")
+            relation.namespace = namespace
+
+        source_row = self.conn.execute(
+            "SELECT id, namespace FROM memories WHERE id = ?",
+            (relation.source_id,),
+        ).fetchone()
+        target_row = self.conn.execute(
+            "SELECT id, namespace FROM memories WHERE id = ?",
+            (relation.target_id,),
+        ).fetchone()
+        if source_row is None or target_row is None:
+            raise ValueError("relation endpoints must reference existing memories")
+        if source_row["namespace"] != target_row["namespace"]:
+            raise ValueError("relation endpoints must share a namespace")
+        endpoint_namespace = source_row["namespace"]
+        if relation.namespace is None:
+            relation.namespace = endpoint_namespace
+        elif relation.namespace != endpoint_namespace:
+            raise ValueError("relation namespace does not match memory endpoints")
+
+        existing = self.conn.execute(
+            "SELECT id, is_active FROM memory_relations "
+            "WHERE source_id = ? AND target_id = ? AND relation_type = ? "
+            "AND namespace IS ?",
+            (
+                relation.source_id,
+                relation.target_id,
+                relation.relation_type,
+                relation.namespace,
+            ),
+        ).fetchone()
+        if existing is not None:
+            relation.id = existing["id"]
+            if not existing["is_active"]:
+                now = datetime.now().isoformat()
+                self.conn.execute(
+                    "UPDATE memory_relations SET is_active = 1, confidence = ?, "
+                    "updated_at = ?, source = ? WHERE id = ?",
+                    (relation.confidence, now, relation.source, relation.id),
+                )
+                if commit:
+                    self.conn.commit()
+            return relation.id
+
+        now = datetime.now().isoformat()
+        cur = self.conn.execute(
+            "INSERT INTO memory_relations "
+            "(source_id, target_id, relation_type, confidence, namespace, "
+            "created_at, updated_at, source, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                relation.source_id,
+                relation.target_id,
+                relation.relation_type,
+                relation.confidence,
+                relation.namespace,
+                relation.created_at or now,
+                relation.updated_at or now,
+                relation.source,
+                1 if relation.is_active else 0,
+            ),
+        )
+        relation.id = cur.lastrowid
+        relation.created_at = relation.created_at or now
+        relation.updated_at = relation.updated_at or now
+        if commit:
+            self.conn.commit()
+        return relation.id
+
+    def get_relations(
+        self,
+        source_id: int | None = None,
+        *,
+        namespace: str | None = None,
+        active_only: bool = True,
+        target_id: int | None = None,
+        relation_type: str | None = None,
+    ) -> list[MemoryRelation]:
+        """Return relations, scoped by source, namespace, and optional filters."""
+        query = "SELECT * FROM memory_relations"
+        predicates: list[str] = []
+        params: list[Any] = []
+        if source_id is not None:
+            predicates.append("source_id = ?")
+            params.append(source_id)
+        if target_id is not None:
+            predicates.append("target_id = ?")
+            params.append(target_id)
+        if namespace is not None:
+            predicates.append("namespace = ?")
+            params.append(namespace)
+        if relation_type is not None:
+            RelationManager.validate_type(relation_type)
+            predicates.append("relation_type = ?")
+            params.append(relation_type)
+        if active_only:
+            predicates.append("is_active = 1")
+        if predicates:
+            query += " WHERE " + " AND ".join(predicates)
+        query += " ORDER BY id"
+        rows = self.conn.execute(query, params).fetchall()
+        return [self._row_to_relation(row) for row in rows]
+
+    def deactivate_relation(
+        self,
+        relation_id: int,
+        *,
+        namespace: str | None = None,
+        commit: bool = True,
+    ) -> None:
+        """Deactivate an edge while retaining its audit row."""
+        query = "UPDATE memory_relations SET is_active = 0, updated_at = ? WHERE id = ?"
+        params: list[Any] = [datetime.now().isoformat(), relation_id]
+        if namespace is not None:
+            query += " AND namespace = ?"
+            params.append(namespace)
+        self.conn.execute(query, params)
+        if commit:
+            self.conn.commit()
+
+    def _row_to_relation(self, row: sqlite3.Row) -> MemoryRelation:
+        return MemoryRelation(
+            id=row["id"],
+            source_id=row["source_id"],
+            target_id=row["target_id"],
+            relation_type=row["relation_type"],
+            confidence=float(row["confidence"]),
+            namespace=row["namespace"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            source=row["source"],
+            is_active=bool(row["is_active"]),
+        )
 
     # ------------------------------------------------------------------
     # Embeddings
