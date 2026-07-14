@@ -24,6 +24,28 @@ Alfredo is a MemoryAgent that gives Qwen Cloud agents persistent, selective memo
 | **Automated tests** | Coverage for storage, forgetting curve, retrieval, agent loop, video demo, and the vault benchmark |
 
 ---
+## Release update — SDK + benchmark reproducible
+
+This update turns Alfredo into an installable memory SDK with explicit provider
+selection, namespace isolation, explainable retrieval, hardened MCP/CLI
+adapters, and a reproducible synthetic benchmark.
+
+Highlights:
+
+- Public storage, embedding, retrieval and trust protocols for dependency injection.
+- Deterministic offline embeddings with an explicit `--offline` path and no API key.
+- Provider/model/dimension guards that reject incompatible persisted vectors.
+- Effective namespace propagation across Python, CLI, MCP and session rotation.
+- Trust evidence with scores, reasons, selected IDs, dropped IDs and lifecycle state.
+- Benchmark comparison of raw-history, semantic-RAG and Alfredo with exact
+  supersession, abstention and security scoring.
+- Verified release candidate: 198 tests passing, offline quickstart passing,
+  and all three benchmark strategies running from the checked-in fixtures.
+
+This is an SDK release candidate, not a hosted SaaS product. Dashboard,
+multi-tenant hosting, billing and managed storage remain future work.
+
+---
 
 ## 🔬 The Science
 
@@ -295,20 +317,22 @@ The same memory layer works with any configured OpenAI-compatible provider.
 ```
 src/memory_agent/
 ├── core/                      # Engine room
-│   ├── memory_store.py        # SQLite persistence (WAL mode, 5 tables)
-│   ├── embeddings.py          # sentence-transformers (all-MiniLM-L6-v2)
+│   ├── memory_store.py        # SQLite persistence, migrations, namespaces
+│   ├── embeddings.py          # Provider-aware semantic embeddings
+│   ├── deterministic_embeddings.py # Offline hashed-token provider
 │   ├── forgetting.py          # Ebbinghaus curve + reinforcement
-│   ├── retrieval.py           # Scoring + MMR diversity
+│   ├── retrieval.py            # Scoring + MMR + explainable evidence
+│   ├── context_budget.py      # Bounded recall packet accounting
 │   └── config.py              # All tunable parameters
 ├── agent/                     # Agent loop
 │   ├── orchestrator.py        # Perceive → extract → retrieve → decay
 │   └── decision.py            # NLP extraction of preferences/facts
-├── cli/                       # Interactive CLI (Click)
-│   └── commands.py            # chat, stats, search, benchmark, mcp, llm
 ├── integrations/              # Extensions
 │   ├── mcp_server.py          # MCP server (stdio + HTTP)
 │   └── llm_connector.py       # DeepSeek/OpenAI/Anthropic connector
-├── benchmark.py               # Synthetic vault benchmark loader/evaluator
+├── benchmark.py               # Synthetic benchmark loader/evaluator
+├── benchmark_baselines/       # Raw-history, semantic-RAG, Alfredo
+├── ports.py                   # Public dependency-injection protocols
 └── __main__.py                # Entry point
 ```
 
@@ -317,12 +341,16 @@ src/memory_agent/
 ## 🧪 Test Suite
 
 ```
-tests/test_memory_store.py   — SQLite CRUD, embeddings, tags, sessions
-tests/test_forgetting.py     — forgetting curve, reinforcement, archival
-tests/test_retrieval.py      — scoring, MMR, filters, access tracking
-tests/test_agent.py          — full memory cycle, multi-session recall, stats
-tests/test_benchmark.py      — vault benchmark loading, seeding, trust-policy evaluation
-tests/test_video_demo.py     — no-voice Devpost benchmark demo smoke tests
+tests/test_memory_store.py              — SQLite CRUD, migrations, namespaces
+tests/test_forgetting.py                — forgetting curve, reinforcement, archival
+tests/test_retrieval.py                 — scoring, MMR, filters, access tracking
+tests/test_agent.py                     — full memory cycle, multi-session recall
+tests/test_agent_dependencies.py        — injected stores/providers/trust policy
+tests/test_benchmark*.py                — baseline comparison and oracle scoring
+tests/test_deterministic_embeddings.py  — offline provider and provenance guards
+tests/test_mcp_server.py                — MCP namespace/evidence/lifecycle output
+tests/test_cli*.py                      — CLI, slash commands and quickstart
+tests/test_documentation_commands.py    — documented command smoke tests
 ```
 
 ```bash
@@ -376,9 +404,18 @@ In the interactive CLI:
 Benchmark CLI:
 
 ```bash
-python -m memory_agent --db .alfredo/vault_benchmark.db benchmark seed --users benchmarks/alfredos_vault/users.json --memories benchmarks/alfredos_vault/memories.jsonl
-python -m memory_agent --db .alfredo/vault_benchmark.db benchmark run --users benchmarks/alfredos_vault/users.json --questions benchmarks/alfredos_vault/evaluation_questions.jsonl --report benchmarks/alfredos_vault/benchmark_report.json
+python -m memory_agent --offline benchmark compare \
+  --users benchmarks/alfredos_vault/users.json \
+  --memories benchmarks/alfredos_vault/memories.jsonl \
+  --questions benchmarks/alfredos_vault/evaluation_questions.jsonl \
+  --report .alfredo/benchmark-comparison.json \
+  --seed 42 --run local-offline
 ```
+
+The report contains `raw-history`, `semantic-rag`, and `alfredo` results,
+dataset/config hashes, security events, context accounting, and latency p50/p95.
+Use `--db` for a persistent vault; use separate databases when changing the
+embedding provider.
 
 ---
 
