@@ -58,8 +58,8 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install the minimal project
-        run: python -m pip install -e .
+      - name: Install project test dependencies
+        run: python -m pip install -e ".[mcp,llm]"
       - name: Install test runner
         run: python -m pip install pytest
       - name: Run the complete test suite
