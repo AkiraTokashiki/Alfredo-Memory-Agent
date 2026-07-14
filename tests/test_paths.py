@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from memory_agent.core.paths import _is_dev_repo
 from memory_agent.core.paths import default_memory_db_path, resolve_memory_home
 from click.testing import CliRunner
 
@@ -31,6 +34,48 @@ def test_resolve_memory_home_uses_repo_local_alfredo_for_dev_repo(monkeypatch, t
 
     assert resolved == repo / ".alfredo"
     assert resolved.exists()
+
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        '[project]\nname = "alfredo-memory-agent"\n',
+        '# comment\n[project]\nversion = "0.2.0"\nname = "alfredo-memory-agent"\n',
+    ],
+)
+def test_is_dev_repo_parses_project_name_from_toml(document, tmp_path):
+    (tmp_path / "pyproject.toml").write_text(document, encoding="utf-8")
+
+    assert _is_dev_repo(tmp_path) is True
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "[project]\nname = \"alfredo-memory-agent\"\ninvalid",
+        '[tool]\nname = "alfredo-memory-agent"\n',
+        '[project]\nname = "another-project"\n',
+    ],
+)
+def test_is_dev_repo_rejects_invalid_or_non_project_metadata(document, tmp_path):
+    (tmp_path / "pyproject.toml").write_text(document, encoding="utf-8")
+
+    assert _is_dev_repo(tmp_path) is False
+
+
+
+def test_is_dev_repo_handles_unreadable_pyproject(monkeypatch, tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "alfredo-memory-agent"\n', encoding="utf-8"
+    )
+
+    def raise_os_error(*args, **kwargs):
+        raise OSError("unreadable")
+
+    monkeypatch.setattr(Path, "read_text", raise_os_error)
+
+    assert _is_dev_repo(tmp_path) is False
 
 
 def test_default_memory_db_path_uses_memory_agent_db_filename(monkeypatch, tmp_path):

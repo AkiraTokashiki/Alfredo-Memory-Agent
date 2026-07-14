@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from pathlib import Path
 
 APP_NAME = "Alfredo"
@@ -15,9 +16,11 @@ def _is_dev_repo(path: Path) -> bool:
     if not pyproject.exists():
         return False
     try:
-        return 'name = "alfredo-memory-agent"' in pyproject.read_text(encoding="utf-8")
-    except OSError:
+        document = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
         return False
+    project = document.get("project")
+    return isinstance(project, dict) and project.get("name") == "alfredo-memory-agent"
 
 
 def _package_project_root() -> Path | None:
