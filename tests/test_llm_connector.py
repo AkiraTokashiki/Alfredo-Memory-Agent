@@ -85,6 +85,7 @@ class TestQwenCloudProvider:
                     content="The user prefers: python",
                     memory_type="preference",
                     importance=0.7,
+                    confidence=0.9,
                 )
             )
             context = connector._build_memory_context("python")
