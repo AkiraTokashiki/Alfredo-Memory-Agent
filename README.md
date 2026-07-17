@@ -1,19 +1,19 @@
-# Memo — MemoryAgent
+# Alfredo  — MemoryAgent
 
-![Memo MemoryAgent lifecycle: learn, retrieve, trust, pack, reinforce, supersede or forget](docs/assets/Memo-memory-lifecycle.svg)
+![Alfredo MemoryAgent lifecycle: learn, retrieve, trust, pack, reinforce, supersede or forget](docs/assets/Memo-memory-lifecycle.svg)
 
 > **A local MemoryAgent that learns, remembers, forgets, and explains what it recalls.**
-> Memo keeps a durable, selective memory for an agent without turning your data into a hosted SaaS.
+> Alfredo keeps a durable, selective memory for an agent without turning your data into a hosted SaaS.
 
 **Start here:** [offline quickstart](#quickstart) · [lifecycle demo](examples/demo_lifecycle.py) · [MCP and Python integration](INTEGRATION.md) · [synthetic benchmark](#benchmark-evidence)
 
 ---
 
-## What Memo is
+## What Alfredo is
 
-Memo is a Python SDK and CLI for a local memory layer. Its native store is SQLite, and the intended distribution name is `Memo-memory-agent` while the import namespace remains `memory_agent`. You run it beside your agent and choose where its vault lives; there is no Memo-hosted dashboard, tenant service, billing account, or required remote memory API.
+Alfredo is a Python SDK and CLI for a local memory layer. Its native store is SQLite, and the intended distribution name is `Memo-memory-agent` while the import namespace remains `memory_agent`. You run it beside your agent and choose where its vault lives; there is no Memo-hosted dashboard, tenant service, billing account, or required remote memory API.
 
-A conversation transcript is not a memory policy. Raw history grows without a bounded selection step, while a simple RAG index can return semantically similar text without deciding whether it is trusted, stale, superseded, or safe to pack into a prompt. Memo makes those decisions explicit and inspectable:
+A conversation transcript is not a memory policy. Raw history grows without a bounded selection step, while a simple RAG index can return semantically similar text without deciding whether it is trusted, stale, superseded, or safe to pack into a prompt. Alfredo makes those decisions explicit and inspectable:
 
 - **Namespaces** keep records and sessions scoped to an agent or tenant boundary.
 - **Evidence** records score, matching signals, trust, and a reason for each retrieval decision.
@@ -63,17 +63,17 @@ The demo covers cross-session recall, preference supersession, and bounded trust
 
 ## Why it is different
 
-| Approach | What it keeps | What it does not decide | What Memo adds |
+| Approach | What it keeps | What it does not decide | What Alfredo adds |
 | --- | --- | --- | --- |
 | Raw conversation history | The transcript | Which facts are current, trusted, or within budget | Candidate extraction, lifecycle state, bounded packets, and explicit forget/supersede operations |
 | Simple semantic RAG | Indexed chunks ranked by similarity | Whether a result is low-confidence, stale, superseded, or safe for context | Trust evidence, namespace-aware retrieval, selected/dropped IDs, and reinforcement/decay |
-| Memo MemoryAgent | Structured local memories in a SQLite vault | Your deployment's access-control and privacy obligations | A local, inspectable learn → retrieve → trust → pack → reinforce → supersede/forget lifecycle |
+| Alfredo MemoryAgent | Structured local memories in a SQLite vault | Your deployment's access-control and privacy obligations | A local, inspectable learn → retrieve → trust → pack → reinforce → supersede/forget lifecycle |
 
-The comparison is about responsibilities, not a claim that one strategy wins every workload. Memo can be embedded through the protocols in the SDK and can also expose an MCP server; it is not a hosted memory SaaS.
+The comparison is about responsibilities, not a claim that one strategy wins every workload. Alfredo can be embedded through the protocols in the SDK and can also expose an MCP server; it is not a hosted memory SaaS.
 
 ## Agentic memory primitives
 
-Memo now exposes the higher-level primitives needed to build memory workflows without replacing the SQLite core:
+Alfredo now exposes the higher-level primitives needed to build memory workflows without replacing the SQLite core:
 
 - **Typed relations** — `MemoryRelation` edges such as `supports`, `supersedes`, and `contradicts` are namespace-aware, lifecycle-aware, auditable, and safe to expand only after trust and context-budget checks.
 - **Proposal-first evolution** — `EvolutionProposal` and `EvolutionDecision` let a deterministic or remote planner suggest metadata changes, supersession, and relations. `MemoryStore.apply_evolution()` validates the proposal and commits accepted mutations plus one audit event atomically; rejected proposals are recorded without storing raw prompts or secrets.
@@ -87,7 +87,7 @@ The public SDK exports these building blocks from `memory_agent`, including `Mem
 SQLite remains the source of truth, but active memories can be projected into deterministic, human-readable Markdown files without adding an Obsidian runtime dependency:
 
 ```bash
-Memo --db .Memo/memory.db export-markdown \
+Alfredo --db .Memo/memory.db export-markdown \
   --namespace tenant-a \
   --output .Memo/markdown/tenant-a
 ```
@@ -123,7 +123,7 @@ This benchmark is **not a security or privacy audit**, is not production data, a
 
 The comparison also has an opt-in `Memo-agentic` strategy (`config={"agentic": true}`). It is a deterministic metadata view over the same local baseline behavior: structured memories are joined to typed relations, proposal-first evolution decisions, task packs, episodic consolidation/deduplication, forgetting and trust decisions, and bounded context accounting. Agentic rows expose selected and dropped IDs, trust evidence, relation IDs/types, evolution and audit IDs, task-pack IDs, episode deduplication, context size, and latency. The default comparison remains exactly the three baseline strategies; no remote model or API is used.
 
-Agentic evidence is fixture-derived and marked synthetic; dataset hashes and the run seed make repeated offline runs comparable. These fields describe exercised decisions, not a production guarantee. The benchmark cannot establish privacy, security, authorization, retention, deletion, or quality for a deployment, and it must not be read as an endorsement of any external memory framework. The terminology is informed by public discussions such as [MemGPT/Letta](https://github.com/cpacker/MemGPT) and [Graphiti](https://github.com/getzep/graphiti) for provenance only; Memo does not reuse their code or imply affiliation.
+Agentic evidence is fixture-derived and marked synthetic; dataset hashes and the run seed make repeated offline runs comparable. These fields describe exercised decisions, not a production guarantee. The benchmark cannot establish privacy, security, authorization, retention, deletion, or quality for a deployment, and it must not be read as an endorsement of any external memory framework. The terminology is informed by public discussions such as [MemGPT/Letta](https://github.com/cpacker/MemGPT) and [Graphiti](https://github.com/getzep/graphiti) for provenance only; Alfredo does not reuse their code or imply affiliation.
 
 To run the documented offline comparison from a checkout:
 
@@ -146,4 +146,4 @@ The community-policy links are kept in the README so adopters have stable naviga
 
 ## License
 
-Memo is released under the [MIT License](LICENSE).
+Alfredo is released under the [MIT License](LICENSE).
