@@ -218,3 +218,23 @@ class TestMemoryStore:
         assert updated.source == "reviewer"
         assert updated.superseded_by == 99
         assert updated.last_decision_reason == "manual override"
+
+
+def test_purge_expired_sessions_preserves_memories_and_namespace(store: MemoryStore):
+    old_session = store.create_session("old", namespace="tenant-a")
+    fresh_session = store.create_session("fresh", namespace="tenant-a")
+    other_session = store.create_session("other", namespace="tenant-b")
+    memory_id = store.add_memory(MemoryRecord(content="preserve me", namespace="tenant-a"), namespace="tenant-a")
+    store.link_memory_to_session(old_session, memory_id, namespace="tenant-a")
+    store.end_session(old_session, namespace="tenant-a")
+    store.end_session(fresh_session, namespace="tenant-a")
+    store.end_session(other_session, namespace="tenant-b")
+    store.conn.execute("UPDATE sessions SET ended_at = ? WHERE id = ?", ("2026-05-01T00:00:00", old_session))
+    store.conn.commit()
+
+    removed = store.purge_expired_sessions(cutoff="2026-06-01T00:00:00", namespace="tenant-a")
+
+    assert removed == 1
+    assert [session.id for session in store.get_recent_sessions(namespace="tenant-a")] == [fresh_session]
+    assert [session.id for session in store.get_recent_sessions(namespace="tenant-b")] == [other_session]
+    assert store.get_memory(memory_id, namespace="tenant-a") is not None

@@ -652,17 +652,20 @@ def benchmark_compare(
 
 
 @cli.command()
+@click.argument("action", required=False, default="serve", type=click.Choice(["serve", "setup"], case_sensitive=False))
 @click.option("--http", is_flag=True, help="Run in HTTP mode instead of stdio")
 @click.option("--host", default="localhost", help="HTTP host (default: localhost)")
 @click.option("--port", default=8090, type=int, help="HTTP port (default: 8090)")
 @click.pass_context
-def mcp(ctx: click.Context, http: bool, host: str, port: int) -> None:
-    """Run MemoryAgent as an MCP server.
+def mcp(ctx: click.Context, action: str, http: bool, host: str, port: int) -> None:
+    """Run Alfredo as an MCP server or configure MCP clients."""
+    if action.lower() == "setup":
+        from memory_agent.cli.onboarding import run_mcp_setup
 
-    Exposes memory tools via Model Context Protocol. Use stdio mode (default)
-    for Hermes or Claude Desktop integration. Use --http for remote clients.
-    """
+        run_mcp_setup()
+        return
     from memory_agent.integrations.mcp_server import run_mcp_server
+
     run_mcp_server(host=host if http else None, port=port if http else None)
 
 
@@ -691,3 +694,28 @@ def llm(ctx: click.Context, provider: str, model: str | None, query: str | None)
         connector.close()
     else:
         run_interactive(provider=provider, model=model)
+
+
+@cli.command("setup")
+def setup_command() -> None:
+    """Run first-run setup and configure detected MCP clients."""
+    from memory_agent.cli.onboarding import run_setup
+
+    run_setup()
+
+
+@cli.command("doctor")
+@click.option("--mcp", "mcp_only", is_flag=True, help="Only inspect MCP clients.")
+def doctor_command(mcp_only: bool) -> None:
+    """Diagnose paths, dependencies, and MCP integrations."""
+    from memory_agent.cli.onboarding import run_doctor
+
+    run_doctor(mcp_only=mcp_only)
+
+
+@cli.command("version")
+def version_command() -> None:
+    """Print the installed Alfredo version."""
+    from importlib.metadata import version
+
+    click.echo(version("alfredo-memory-agent"))

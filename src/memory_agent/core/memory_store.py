@@ -959,6 +959,40 @@ class MemoryStore:
         if commit:
             self.conn.commit()
 
+    def purge_expired_sessions(
+        self,
+        *,
+        cutoff: str,
+        namespace: str | None = None,
+        commit: bool = True,
+    ) -> int:
+        """Delete ended sessions older than ``cutoff`` without deleting memories."""
+        params: list[Any] = [cutoff]
+        query = "SELECT id FROM sessions WHERE ended_at IS NOT NULL AND ended_at < ?"
+        if namespace is not None:
+            query += " AND namespace = ?"
+            params.append(namespace)
+        session_ids = [int(row["id"]) for row in self.conn.execute(query, params).fetchall()]
+        if not session_ids:
+            return 0
+        placeholders = ", ".join("?" for _ in session_ids)
+        try:
+            self.conn.execute(
+                f"DELETE FROM session_memories WHERE session_id IN ({placeholders})",
+                session_ids,
+            )
+            cursor = self.conn.execute(
+                f"DELETE FROM sessions WHERE id IN ({placeholders})",
+                session_ids,
+            )
+            if commit:
+                self.conn.commit()
+            return int(cursor.rowcount)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
     def link_memory_to_session(
         self,
         session_id: int,

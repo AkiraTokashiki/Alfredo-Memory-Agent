@@ -2,37 +2,48 @@
 
 This guide documents the entry points that exist in this repository. The distribution name is `alfredo-memory-agent`; the import and module namespace remains `memory_agent`. The examples use a local SQLite vault and do not imply a hosted Alfredo service.
 
-## Install and run offline first
+## Install from GitHub and run offline
 
-The release install contract starts with the canonical distribution name:
+For a machine without a checkout, clone the public repository first:
+
+```powershell
+git clone https://github.com/AkiraTokashiki/Memo-Memory-Agent.git
+cd Memo-Memory-Agent
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[semantic,mcp]"
+alfredo --offline quickstart
+```
+
+On macOS/Linux, activate with `source .venv/bin/activate` instead. The module form is equivalent:
+
+```bash
+python -m memory_agent --offline quickstart
+```
+
+For an installed release, the canonical package command is:
 
 ```bash
 python -m pip install alfredo-memory-agent
 alfredo --offline quickstart
 ```
 
-The `alfredo` command is installed by the package. The module entry point remains compatible with existing scripts:
+`--offline` selects deterministic hashed-token embeddings and requires no API key or model download. The `semantic` extra enables model-backed embeddings; `mcp` enables the MCP server and local client setup. Set `ALFREDO_HOME` to choose the vault directory.
 
-```bash
-python -m memory_agent --offline quickstart
+Run maintenance after installation:
+
+```console
+alfredo setup
+alfredo mcp setup
+alfredo doctor
+alfredo doctor --mcp
+alfredo version
 ```
 
-`--offline` selects deterministic hashed-token embeddings. The quickstart uses a temporary SQLite database unless `--db` is supplied, performs a cross-turn recall, and requires **no API key, network request, or model download**. That no-network guarantee applies to the offline CLI; the Python API is offline only when its config selects the deterministic provider, while the MCP server recipes below use the server's default provider.
+The setup flow asks before every MCP JSON write, preserves unrelated servers, creates a `.bak` backup, and uses atomic replacement. Unsupported clients receive a manual snippet. `alfredo mcp` without `setup` remains the MCP server command.
 
-For a checkout, an editable install is useful during development. Quote extras so the command is safe in Windows PowerShell and POSIX shells:
-
-```powershell
-python -m pip install -e ".[mcp]"
-```
-
-The `mcp` extra is required for the MCP server (`mcp` and `httpx`). The current server starts with the default `sentence-transformers` provider, so install the `semantic` extra as well. The MCP command does not expose a provider switch and does not consume the global CLI `--offline` setting. MCP operations do not require an LLM API key, but the default semantic provider may require model dependencies or a model download:
-
-```powershell
-python -m pip install -e ".[semantic]"
-alfredo --db .alfredo/memory.db chat
-```
-
-Keep databases separate when the embedding provider or dimension changes.
+Keep offline and semantic vaults separate when their embedding provider or vector dimension differs.
 
 ## Offline CLI
 
